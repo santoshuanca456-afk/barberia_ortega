@@ -1,0 +1,1 @@
+<?php // Archivo financiero.php ?>
