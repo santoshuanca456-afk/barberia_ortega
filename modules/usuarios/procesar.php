@@ -77,7 +77,12 @@ try {
             // Registrar en auditoría
             logAudit($_SESSION['user_id'], "Creó usuario #$id_usuario: $usuario (Rol: $rol)");
             
-            setAlert('success', 'Usuario creado', 'El usuario se registró correctamente');
+            // CORREGIDO: Usar $_SESSION para alertas
+            $_SESSION['alert'] = [
+                'type' => 'success',
+                'title' => 'Usuario creado',
+                'message' => 'El usuario se registró correctamente'
+            ];
             header('Location: ver.php?id=' . $id_usuario);
             exit();
             
@@ -154,7 +159,12 @@ try {
             
             logAudit($_SESSION['user_id'], "Editó usuario #$id_usuario: $usuario");
             
-            setAlert('success', 'Usuario actualizado', 'Los cambios se guardaron correctamente');
+            // CORREGIDO: Usar $_SESSION para alertas
+            $_SESSION['alert'] = [
+                'type' => 'success',
+                'title' => 'Usuario actualizado',
+                'message' => 'Los cambios se guardaron correctamente'
+            ];
             header('Location: ver.php?id=' . $id_usuario);
             exit();
             
@@ -177,7 +187,12 @@ try {
             
             logAudit($_SESSION['user_id'], "Cambió estado del usuario #$id_usuario a '$nuevo_estado'");
             
-            setAlert('success', 'Estado actualizado', "El usuario ahora está $nuevo_estado");
+            // CORREGIDO: Usar $_SESSION para alertas
+            $_SESSION['alert'] = [
+                'type' => 'success',
+                'title' => 'Estado actualizado',
+                'message' => "El usuario ahora está $nuevo_estado"
+            ];
             header('Location: index.php');
             exit();
             
@@ -219,7 +234,12 @@ try {
             
             logAudit($_SESSION['user_id'], "Cambió contraseña del usuario #$id_usuario");
             
-            setAlert('success', 'Contraseña actualizada', 'La contraseña se cambió correctamente');
+            // CORREGIDO: Usar $_SESSION para alertas
+            $_SESSION['alert'] = [
+                'type' => 'success',
+                'title' => 'Contraseña actualizada',
+                'message' => 'La contraseña se cambió correctamente'
+            ];
             header('Location: ver.php?id=' . $id_usuario);
             exit();
             
@@ -229,7 +249,13 @@ try {
     
 } catch (Exception $e) {
     error_log("Error en usuarios/procesar.php: " . $e->getMessage());
-    setAlert('error', 'Error', $e->getMessage());
+    
+    // CORREGIDO: Usar $_SESSION para alertas de error
+    $_SESSION['alert'] = [
+        'type' => 'error',
+        'title' => 'Error',
+        'message' => $e->getMessage()
+    ];
     
     // Redirigir según el contexto
     if (isset($_POST['id_usuario'])) {

@@ -1,324 +1,452 @@
-<?php
-/**
- * Editar Reserva
- * Sistema de Gestión - Barbería Ortega
- */
-
-require_once '../../config/config.php';
-requireLogin();
-
-$db = getDB();
-$id_reserva = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-
-if (!$id_reserva) {
-    $_SESSION['error'] = 'ID de reserva no válido';
-    header('Location: index.php');
-    exit();
-}
-
-// Obtener datos de la reserva
-$stmt = $db->prepare("
-    SELECT r.*, 
-           DATE(r.fecha_inicio) as fecha,
-           TIME(r.fecha_inicio) as hora_inicio,
-           TIME(r.fecha_fin) as hora_fin
-    FROM reservas r
-    WHERE r.id_reserva = ?
-");
-$stmt->execute([$id_reserva]);
-$reserva = $stmt->fetch();
-
-if (!$reserva) {
-    $_SESSION['error'] = 'Reserva no encontrada';
-    header('Location: index.php');
-    exit();
-}
-
-// Obtener clientes
-$stmtClientes = $db->query("SELECT id_cliente, nombre, telefono FROM clientes ORDER BY nombre");
-$clientes = $stmtClientes->fetchAll();
-
-// Obtener barberos
-$stmtBarberos = $db->query("SELECT id_usuario, nombre FROM usuarios WHERE rol = 'barbero' AND estado = 'activo' ORDER BY nombre");
-$barberos = $stmtBarberos->fetchAll();
-
-// Obtener servicios
-$stmtServicios = $db->query("SELECT id_servicio, nombre, duracion_minutos, precio FROM servicios ORDER BY nombre");
-$servicios = $stmtServicios->fetchAll();
-
-$pageTitle = "Editar Reserva";
-include '../../includes/header.php';
-?>
-
-<div class="container-fluid py-4">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1>
-                    <i class="fas fa-edit text-warning"></i> 
-                    Editar Reserva #<?php echo $id_reserva; ?>
-                </h1>
-                <a href="index.php" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </a>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cancelar/Reactivar Reserva - Barbería Ortega</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #8B4513;
+            --secondary-color: #D2691E;
+            --accent-color: #A0522D;
+            --light-color: #F5F5DC;
+            --dark-color: #3E2723;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: var(--primary-color) !important;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card-header {
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: bold;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+        }
+        
+        .btn-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e0a800;
+            border-color: #d39e00;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            border-color: #28a745;
+        }
+        
+        .btn-success:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
+        
+        .status-pendiente {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        .status-confirmada {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .status-cancelada {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .status-completada {
+            background-color: #17a2b8;
+            color: white;
+        }
+        
+        .badge {
+            font-size: 0.8rem;
+            padding: 0.4em 0.6em;
+        }
+        
+        .alert-warning {
+            border-left: 4px solid #ffc107;
+        }
+        
+        .alert-danger {
+            border-left: 4px solid #dc3545;
+        }
+        
+        .alert-success {
+            border-left: 4px solid #28a745;
+        }
+        
+        .sidebar {
+            background-color: var(--dark-color);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 0.8rem 1rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.2rem;
+        }
+        
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 0.5rem;
+            width: 1.2rem;
+            text-align: center;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .page-title {
+            color: var(--dark-color);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--secondary-color);
+        }
+        
+        .reservation-details {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .action-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .action-card.selected {
+            border: 2px solid;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                min-height: auto;
+            }
+            
+            .main-content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: var(--dark-color);">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-cut"></i> Barbería Ortega
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle"></i> Administrador
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog"></i> Configuración</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a></li>
+                        </ul>
+                    </li>
+                </ul>
             </div>
+        </div>
+    </nav>
 
-            <!-- Información del estado actual -->
-            <div class="alert alert-info mb-4">
-                <h6><i class="fas fa-info-circle"></i> Información de la Reserva</h6>
-                <p class="mb-1"><strong>Estado actual:</strong> 
-                    <span class="badge status-<?php echo $reserva['estado']; ?>">
-                        <?php echo ucfirst($reserva['estado']); ?>
-                    </span>
-                </p>
-                <p class="mb-0"><strong>Acción disponible:</strong> 
-                    <?php 
-                    $accion_disponible = ($reserva['estado'] == 'cancelada') ? 'Reactivar reserva' : 'Cancelar reserva';
-                    echo $accion_disponible; 
-                    ?>
-                </p>
-            </div>
-
-            <div class="card shadow">
-                <div class="card-header bg-warning text-white">
-                    <h6 class="mb-0">
-                        <i class="fas fa-wpforms"></i> Formulario de Edición
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <form id="formReserva" action="procesar.php" method="POST" class="needs-validation" novalidate>
-                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                        <input type="hidden" name="action" value="editar">
-                        <input type="hidden" name="id_reserva" value="<?php echo $id_reserva; ?>">
-
-                        <div class="row">
-                            <!-- Cliente -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-user"></i> Cliente *
-                                </label>
-                                <select name="id_cliente" id="id_cliente" class="form-select" required>
-                                    <option value="">Seleccione un cliente</option>
-                                    <?php foreach ($clientes as $cliente): ?>
-                                        <option value="<?php echo $cliente['id_cliente']; ?>"
-                                                <?php echo $reserva['id_cliente'] == $cliente['id_cliente'] ? 'selected' : ''; ?>>
-                                            <?php echo $cliente['nombre']; ?> 
-                                            <?php if ($cliente['telefono']): ?>
-                                                - <?php echo $cliente['telefono']; ?>
-                                            <?php endif; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div class="invalid-feedback">Seleccione un cliente</div>
-                            </div>
-
-                            <!-- Barbero -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-user-tie"></i> Barbero *
-                                </label>
-                                <select name="id_usuario" id="id_usuario" class="form-select" required>
-                                    <option value="">Seleccione un barbero</option>
-                                    <?php foreach ($barberos as $barbero): ?>
-                                        <option value="<?php echo $barbero['id_usuario']; ?>"
-                                                <?php echo $reserva['id_usuario'] == $barbero['id_usuario'] ? 'selected' : ''; ?>>
-                                            <?php echo $barbero['nombre']; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div class="invalid-feedback">Seleccione un barbero</div>
-                            </div>
-
-                            <!-- Servicio -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-scissors"></i> Servicio *
-                                </label>
-                                <select name="id_servicio" id="id_servicio" class="form-select" required>
-                                    <option value="">Seleccione un servicio</option>
-                                    <?php foreach ($servicios as $servicio): ?>
-                                        <option value="<?php echo $servicio['id_servicio']; ?>" 
-                                                data-duracion="<?php echo $servicio['duracion_minutos']; ?>"
-                                                data-precio="<?php echo $servicio['precio']; ?>"
-                                                <?php echo $reserva['id_servicio'] == $servicio['id_servicio'] ? 'selected' : ''; ?>>
-                                            <?php echo $servicio['nombre']; ?> 
-                                            (<?php echo $servicio['duracion_minutos']; ?> min - <?php echo formatMoney($servicio['precio']); ?>)
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div class="invalid-feedback">Seleccione un servicio</div>
-                            </div>
-
-                            <!-- Fecha -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-calendar"></i> Fecha *
-                                </label>
-                                <input type="date" name="fecha" id="fecha" class="form-control" 
-                                       value="<?php echo $reserva['fecha']; ?>" 
-                                       required>
-                                <div class="invalid-feedback">Ingrese una fecha</div>
-                            </div>
-
-                            <!-- Hora Inicio -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-clock"></i> Hora de Inicio *
-                                </label>
-                                <input type="time" name="hora_inicio" id="hora_inicio" class="form-control" 
-                                       value="<?php echo substr($reserva['hora_inicio'], 0, 5); ?>"
-                                       min="08:00" max="20:00" required>
-                                <small class="text-muted">Horario: 08:00 - 20:00</small>
-                                <div class="invalid-feedback">Ingrese una hora válida</div>
-                            </div>
-
-                            <!-- Hora Fin -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-clock"></i> Hora de Fin
-                                </label>
-                                <input type="time" name="hora_fin" id="hora_fin" class="form-control" 
-                                       value="<?php echo substr($reserva['hora_fin'], 0, 5); ?>" 
-                                       readonly>
-                                <small class="text-muted">Se calcula automáticamente según el servicio</small>
-                            </div>
-
-                            <!-- Notas -->
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-sticky-note"></i> Notas / Observaciones
-                                </label>
-                                <textarea name="notas" class="form-control" rows="3"><?php echo htmlspecialchars($reserva['notas']); ?></textarea>
-                            </div>
-
-                            <!-- Estado -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-flag"></i> Estado
-                                </label>
-                                <select name="estado" class="form-select">
-                                    <option value="pendiente" <?php echo $reserva['estado'] == 'pendiente' ? 'selected' : ''; ?>>Pendiente</option>
-                                    <option value="confirmada" <?php echo $reserva['estado'] == 'confirmada' ? 'selected' : ''; ?>>Confirmada</option>
-                                    <option value="cancelada" <?php echo $reserva['estado'] == 'cancelada' ? 'selected' : ''; ?>>Cancelada</option>
-                                    <option value="finalizada" <?php echo $reserva['estado'] == 'finalizada' ? 'selected' : ''; ?>>Finalizada</option>
-                                </select>
-                            </div>
-
-                            <!-- Pagado -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-money-bill"></i> Estado de Pago
-                                </label>
-                                <select name="pagado" class="form-select">
-                                    <option value="0" <?php echo !$reserva['pagado'] ? 'selected' : ''; ?>>No Pagado</option>
-                                    <option value="1" <?php echo $reserva['pagado'] ? 'selected' : ''; ?>>Pagado</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Botones -->
-                        <div class="text-end mt-4">
-                            <a href="index.php" class="btn btn-secondary me-2">
-                                <i class="fas fa-times"></i> Cancelar
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-lg-2 col-md-3 sidebar p-0">
+                <div class="d-flex flex-column p-3">
+                    <ul class="nav nav-pills flex-column mb-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
                             </a>
-                            
-                            <!-- Botón Cancelar/Reactivar Reserva -->
-                            <?php
-                            $texto_boton = ($reserva['estado'] == 'cancelada') ? 'Reactivar Reserva' : 'Cancelar Reserva';
-                            $clase_boton = ($reserva['estado'] == 'cancelada') ? 'btn-warning' : 'btn-danger';
-                            $icono = ($reserva['estado'] == 'cancelada') ? 'fa-undo' : 'fa-times';
-                            $mensaje_confirmacion = ($reserva['estado'] == 'cancelada') 
-                                ? '¿Está seguro de reactivar esta reserva?' 
-                                : '¿Está seguro de cancelar esta reserva?';
-                            ?>
-                            
-                            <button type="button" 
-                                    class="btn <?php echo $clase_boton; ?> me-2"
-                                    onclick="confirmarCancelacion(<?php echo $reserva['id_reserva']; ?>, '<?php echo $mensaje_confirmacion; ?>')">
-                                <i class="fas <?php echo $icono; ?>"></i>
-                                <?php echo $texto_boton; ?>
-                            </button>
-                            
-                            <button type="submit" class="btn btn-warning">
-                                <i class="fas fa-save"></i> Guardar Cambios
-                            </button>
+                        </li>
+                        <li>
+                            <a href="#" class="nav-link active">
+                                <i class="fas fa-calendar-alt"></i> Reservas
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="nav-link">
+                                <i class="fas fa-users"></i> Clientes
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="nav-link">
+                                <i class="fas fa-user-tie"></i> Barberos
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="nav-link">
+                                <i class="fas fa-chart-bar"></i> Reportes
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="nav-link">
+                                <i class="fas fa-cog"></i> Configuración
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-lg-10 col-md-9 main-content">
+                <h1 class="page-title">Cancelar/Reactivar Reserva</h1>
+                
+                <div class="row">
+                    <div class="col-md-8 mx-auto">
+                        <div class="card shadow">
+                            <div class="card-header bg-warning text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-exchange-alt"></i> Cambiar Estado de Reserva
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <!-- Información de la reserva -->
+                                <div class="card mb-4">
+                                    <div class="card-body">
+                                        <h6>Detalles de la Reserva #123</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>Cliente:</strong> Juan Pérez</p>
+                                                <p><strong>Teléfono:</strong> +34 612 345 678</p>
+                                                <p><strong>Email:</strong> juan.perez@example.com</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Barbero:</strong> Carlos Ortega</p>
+                                                <p><strong>Fecha:</strong> 15/06/2023 10:30</p>
+                                                <p><strong>Servicio:</strong> Corte de cabello y afeitado</p>
+                                                <p><strong>Estado Actual:</strong> 
+                                                    <span id="currentStatus" class="badge status-confirmada">
+                                                        Confirmada
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <p><strong>Notas:</strong> Cliente prefiere corte clásico con degradado.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Selección de acción -->
+                                <div class="mb-4">
+                                    <h6 class="mb-3">Seleccione la acción a realizar:</h6>
+                                    <div class="row">
+                                        <!-- Cancelar Reserva -->
+                                        <div class="col-md-6 mb-3">
+                                            <div class="card action-card h-100" id="cancelCard" data-action="cancelar">
+                                                <div class="card-body text-center">
+                                                    <div class="mb-3">
+                                                        <i class="fas fa-times-circle fa-3x text-danger"></i>
+                                                    </div>
+                                                    <h5 class="card-title">Cancelar Reserva</h5>
+                                                    <p class="card-text">Marca la reserva como cancelada. El cliente será notificado.</p>
+                                                    <div class="mt-3">
+                                                        <span class="badge bg-danger">Estado: Cancelada</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Reactivar Reserva -->
+                                        <div class="col-md-6 mb-3">
+                                            <div class="card action-card h-100" id="reactivateCard" data-action="reactivar">
+                                                <div class="card-body text-center">
+                                                    <div class="mb-3">
+                                                        <i class="fas fa-redo fa-3x text-success"></i>
+                                                    </div>
+                                                    <h5 class="card-title">Reactivar Reserva</h5>
+                                                    <p class="card-text">Vuelve a poner la reserva en estado pendiente para confirmación.</p>
+                                                    <div class="mt-3">
+                                                        <span class="badge bg-warning text-dark">Estado: Pendiente</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Alerta dinámica -->
+                                <div id="alertContainer" class="mb-4" style="display: none;">
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle"></i> ¿Está seguro de realizar esta acción?</h6>
+                                        <p class="mb-0" id="alertMessage">Seleccione una acción para ver los detalles.</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Formulario -->
+                                <form method="POST" id="statusForm" action="procesar_estado.php">
+                                    <input type="hidden" name="csrf_token" value="abc123xyz">
+                                    <input type="hidden" name="id_reserva" value="123">
+                                    <input type="hidden" name="action" id="formAction" value="">
+                                    <input type="hidden" name="nuevo_estado" id="nuevoEstado" value="">
+                                    
+                                    <div class="d-flex justify-content-between">
+                                        <a href="index.php" class="btn btn-secondary">
+                                            <i class="fas fa-arrow-left"></i> Volver
+                                        </a>
+                                        <button type="submit" class="btn btn-warning" id="submitBtn" disabled>
+                                            <i class="fas fa-sync-alt"></i> <span id="btnText">Seleccione una acción</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<script>
-$(document).ready(function() {
-    // Calcular hora fin automáticamente
-    $('#id_servicio, #hora_inicio').on('change', function() {
-        calcularHoraFin();
-    });
-    
-    function calcularHoraFin() {
-        const servicioSelect = document.getElementById('id_servicio');
-        const horaInicio = document.getElementById('hora_inicio').value;
-        
-        if (servicioSelect.value && horaInicio) {
-            const duracion = parseInt(servicioSelect.options[servicioSelect.selectedIndex].dataset.duracion);
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const cancelCard = document.getElementById('cancelCard');
+            const reactivateCard = document.getElementById('reactivateCard');
+            const formAction = document.getElementById('formAction');
+            const nuevoEstado = document.getElementById('nuevoEstado');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const alertContainer = document.getElementById('alertContainer');
+            const alertMessage = document.getElementById('alertMessage');
+            const currentStatus = document.getElementById('currentStatus');
             
-            if (duracion) {
-                const [horas, minutos] = horaInicio.split(':');
-                const fecha = new Date();
-                fecha.setHours(parseInt(horas));
-                fecha.setMinutes(parseInt(minutos) + duracion);
-                
-                const horaFin = fecha.getHours().toString().padStart(2, '0') + ':' + 
-                               fecha.getMinutes().toString().padStart(2, '0');
-                
-                document.getElementById('hora_fin').value = horaFin;
-            }
-        }
-    }
-    
-    // Validación del formulario
-    $('#formReserva').on('submit', function(e) {
-        if (!this.checkValidity()) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        $(this).addClass('was-validated');
-    });
-});
-
-// Función para cancelar/reactivar reserva
-function confirmarCancelacion(idReserva, mensaje) {
-    Swal.fire({
-        title: '¿Confirmar acción?',
-        text: mensaje,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: '<i class="fas fa-check"></i> Sí, confirmar',
-        cancelButtonText: '<i class="fas fa-times"></i> Cancelar',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Mostrar carga
-            Swal.fire({
-                title: 'Procesando...',
-                text: 'Actualizando estado de la reserva',
-                icon: 'info',
-                showConfirmButton: false,
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
+            // Configuración de acciones
+            const acciones = {
+                'cancelar': {
+                    texto: 'Cancelar Reserva',
+                    clase: 'btn-danger',
+                    icono: 'fa-times',
+                    alerta: 'alert-danger',
+                    mensaje: 'La reserva será marcada como cancelada. Esta acción notificará al cliente.',
+                    estado: 'cancelada'
+                },
+                'reactivar': {
+                    texto: 'Reactivar Reserva',
+                    clase: 'btn-success',
+                    icono: 'fa-redo',
+                    alerta: 'alert-success',
+                    mensaje: 'La reserva volverá a estado pendiente para su confirmación.',
+                    estado: 'pendiente'
                 }
+            };
+            
+            // Manejar selección de cancelar
+            cancelCard.addEventListener('click', function() {
+                seleccionarAccion('cancelar');
             });
             
-            // Redirigir al archivo eliminar.php
-            window.location.href = `eliminar.php?id=${idReserva}`;
-        }
-    });
-}
-</script>
-
-<?php include '../../includes/footer.php'; ?>
+            // Manejar selección de reactivar
+            reactivateCard.addEventListener('click', function() {
+                seleccionarAccion('reactivar');
+            });
+            
+            function seleccionarAccion(accion) {
+                const config = acciones[accion];
+                
+                // Quitar selección anterior
+                cancelCard.classList.remove('selected', 'border-danger');
+                reactivateCard.classList.remove('selected', 'border-success');
+                
+                // Aplicar selección actual
+                if (accion === 'cancelar') {
+                    cancelCard.classList.add('selected', 'border-danger');
+                } else {
+                    reactivateCard.classList.add('selected', 'border-success');
+                }
+                
+                // Actualizar el formulario
+                formAction.value = accion;
+                nuevoEstado.value = config.estado;
+                
+                // Activar el botón de envío
+                submitBtn.disabled = false;
+                submitBtn.className = 'btn ' + config.clase;
+                btnText.innerHTML = `<i class="fas ${config.icono}"></i> ${config.texto}`;
+                
+                // Actualizar la alerta
+                alertContainer.style.display = 'block';
+                alertContainer.innerHTML = `
+                    <div class="alert ${config.alerta}">
+                        <h6><i class="fas ${config.icono}"></i> ¿Está seguro de realizar esta acción?</h6>
+                        <p class="mb-0">${config.mensaje}</p>
+                    </div>
+                `;
+            }
+            
+            // Manejar envío del formulario
+            document.getElementById('statusForm').addEventListener('submit', function(e) {
+                if (!formAction.value) {
+                    e.preventDefault();
+                    alert('Por favor, seleccione una acción para la reserva.');
+                    return;
+                }
+                
+                const accion = formAction.value;
+                const config = acciones[accion];
+                const confirmMessage = `¿Está completamente seguro de que desea ${config.texto.toLowerCase()}?`;
+                
+                if (!confirm(confirmMessage)) {
+                    e.preventDefault();
+                } else {
+                    // Simular cambio de estado (en un caso real esto se haría en el backend)
+                    currentStatus.textContent = config.estado.charAt(0).toUpperCase() + config.estado.slice(1);
+                    currentStatus.className = 'badge status-' + config.estado;
+                    
+                    // Mostrar mensaje de éxito
+                    alert('¡Estado de reserva actualizado correctamente!');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

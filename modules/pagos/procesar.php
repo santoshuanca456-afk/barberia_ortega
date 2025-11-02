@@ -97,7 +97,12 @@ try {
                 $db->commit();
                 error_log("Transacción completada con éxito");
                 
-                setAlert('success', 'Pago registrado', 'El pago se registró correctamente y la reserva fue marcada como pagada');
+                // CORREGIDO: Usar $_SESSION para alertas
+                $_SESSION['alert'] = [
+                    'type' => 'success',
+                    'title' => 'Pago registrado',
+                    'message' => 'El pago se registró correctamente y la reserva fue marcada como pagada'
+                ];
                 header('Location: index.php');
                 exit();
                 
@@ -163,7 +168,12 @@ try {
             $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
             $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
             
-            setAlert('success', 'Pago registrado', 'El pago de alquiler se registró correctamente');
+            // CORREGIDO: Usar $_SESSION para alertas
+            $_SESSION['alert'] = [
+                'type' => 'success',
+                'title' => 'Pago registrado',
+                'message' => 'El pago de alquiler se registró correctamente'
+            ];
             header('Location: index.php?tipo=alquileres');
             exit();
             break;
@@ -222,7 +232,12 @@ try {
                 
                 $db->commit();
                 
-                setAlert('success', 'Pago registrado', 'La reserva se marcó como pagada correctamente');
+                // CORREGIDO: Usar $_SESSION para alertas
+                $_SESSION['alert'] = [
+                    'type' => 'success',
+                    'title' => 'Pago registrado',
+                    'message' => 'La reserva se marcó como pagada correctamente'
+                ];
                 header('Location: index.php');
                 exit();
                 
@@ -238,7 +253,13 @@ try {
     
 } catch (Exception $e) {
     error_log("Error en pagos/procesar.php: " . $e->getMessage());
-    setAlert('error', 'Error', $e->getMessage());
+    
+    // CORREGIDO: Usar $_SESSION para alertas de error
+    $_SESSION['alert'] = [
+        'type' => 'error',
+        'title' => 'Error',
+        'message' => $e->getMessage()
+    ];
     
     // Redirigir según el contexto
     if ($action == 'registrar_servicio') {

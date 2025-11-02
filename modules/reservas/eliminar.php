@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eliminar Reserva - Barbería Ortega</title>
+    <title>Gestionar Reserva - Barbería Ortega</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -51,6 +51,17 @@
             border-color: #bd2130;
         }
         
+        .btn-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e0a800;
+            border-color: #d39e00;
+        }
+        
         .status-pendiente {
             background-color: #ffc107;
             color: #212529;
@@ -78,6 +89,10 @@
         
         .alert-warning {
             border-left: 4px solid #ffc107;
+        }
+        
+        .alert-info {
+            border-left: 4px solid #17a2b8;
         }
         
         .sidebar {
@@ -201,20 +216,23 @@
 
             <!-- Main Content -->
             <div class="col-lg-10 col-md-9 main-content">
-                <h1 class="page-title">Eliminar Reserva</h1>
+                <h1 class="page-title">Gestionar Reserva</h1>
                 
                 <div class="row">
                     <div class="col-md-8 mx-auto">
                         <div class="card shadow">
                             <div class="card-header bg-danger text-white">
                                 <h5 class="mb-0">
-                                    <i class="fas fa-trash"></i> Eliminar Reserva
+                                    <i class="fas fa-exchange-alt"></i> Cambiar Estado de Reserva
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <div class="alert alert-warning">
-                                    <h6><i class="fas fa-exclamation-triangle"></i> ¿Está seguro de eliminar esta reserva?</h6>
-                                    <p class="mb-0">Esta acción no se puede deshacer.</p>
+                                <!-- Alerta dinámica según el estado -->
+                                <div id="alertContainer">
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle"></i> ¿Está seguro de cambiar el estado de esta reserva?</h6>
+                                        <p class="mb-0">Esta acción modificará el estado actual de la reserva.</p>
+                                    </div>
                                 </div>
                                 
                                 <div class="card mb-3">
@@ -230,8 +248,8 @@
                                                 <p><strong>Barbero:</strong> Carlos Ortega</p>
                                                 <p><strong>Fecha:</strong> 15/06/2023 10:30</p>
                                                 <p><strong>Servicio:</strong> Corte de cabello y afeitado</p>
-                                                <p><strong>Estado:</strong> 
-                                                    <span class="badge status-confirmada">
+                                                <p><strong>Estado Actual:</strong> 
+                                                    <span id="currentStatus" class="badge status-confirmada">
                                                         Confirmada
                                                     </span>
                                                 </p>
@@ -243,15 +261,35 @@
                                     </div>
                                 </div>
                                 
-                                <form method="POST" id="deleteForm">
+                                <!-- Selector de estado -->
+                                <div class="mb-4">
+                                    <label class="form-label"><strong>Cambiar estado a:</strong></label>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button" class="btn btn-outline-primary estado-btn" data-estado="pendiente">
+                                            <i class="fas fa-clock"></i> Pendiente
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success estado-btn" data-estado="confirmada">
+                                            <i class="fas fa-check"></i> Confirmada
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger estado-btn" data-estado="cancelada">
+                                            <i class="fas fa-times"></i> Cancelada
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info estado-btn" data-estado="completada">
+                                            <i class="fas fa-check-double"></i> Completada
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <form method="POST" id="statusForm">
                                     <input type="hidden" name="csrf_token" value="abc123xyz">
+                                    <input type="hidden" name="nuevo_estado" id="nuevoEstado" value="">
                                     
                                     <div class="d-flex justify-content-between">
                                         <a href="index.php" class="btn btn-secondary">
-                                            <i class="fas fa-arrow-left"></i> Cancelar
+                                            <i class="fas fa-arrow-left"></i> Volver
                                         </a>
-                                        <button type="submit" class="btn btn-danger">
-                                            <i class="fas fa-trash"></i> Confirmar Eliminación
+                                        <button type="submit" class="btn btn-danger" id="submitBtn" disabled>
+                                            <i class="fas fa-sync-alt"></i> <span id="btnText">Seleccione un estado</span>
                                         </button>
                                     </div>
                                 </form>
@@ -265,10 +303,90 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.getElementById('deleteForm').addEventListener('submit', function(e) {
-            if (!confirm('¿Está completamente seguro de que desea eliminar esta reserva? Esta acción no se puede deshacer.')) {
-                e.preventDefault();
-            }
+        document.addEventListener('DOMContentLoaded', function() {
+            const estadoBtns = document.querySelectorAll('.estado-btn');
+            const nuevoEstadoInput = document.getElementById('nuevoEstado');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const currentStatus = document.getElementById('currentStatus');
+            const alertContainer = document.getElementById('alertContainer');
+            
+            // Estados y sus configuraciones
+            const estados = {
+                'pendiente': {
+                    texto: 'Marcar como Pendiente',
+                    clase: 'btn-warning',
+                    icono: 'fa-clock',
+                    alerta: 'alert-warning',
+                    mensaje: 'La reserva se marcará como pendiente.'
+                },
+                'confirmada': {
+                    texto: 'Confirmar Reserva',
+                    clase: 'btn-success',
+                    icono: 'fa-check',
+                    alerta: 'alert-success',
+                    mensaje: 'La reserva se confirmará.'
+                },
+                'cancelada': {
+                    texto: 'Cancelar Reserva',
+                    clase: 'btn-danger',
+                    icono: 'fa-times',
+                    alerta: 'alert-danger',
+                    mensaje: 'La reserva se cancelará.'
+                },
+                'completada': {
+                    texto: 'Marcar como Completada',
+                    clase: 'btn-info',
+                    icono: 'fa-check-double',
+                    alerta: 'alert-info',
+                    mensaje: 'La reserva se marcará como completada.'
+                }
+            };
+            
+            // Manejar clic en botones de estado
+            estadoBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const estado = this.getAttribute('data-estado');
+                    const config = estados[estado];
+                    
+                    // Actualizar el formulario
+                    nuevoEstadoInput.value = estado;
+                    
+                    // Activar el botón de envío
+                    submitBtn.disabled = false;
+                    submitBtn.className = 'btn ' + config.clase;
+                    btnText.innerHTML = `<i class="fas ${config.icono}"></i> ${config.texto}`;
+                    
+                    // Actualizar la alerta
+                    alertContainer.innerHTML = `
+                        <div class="alert ${config.alerta}">
+                            <h6><i class="fas ${config.icono}"></i> ¿Está seguro de cambiar el estado de esta reserva?</h6>
+                            <p class="mb-0">${config.mensaje}</p>
+                        </div>
+                    `;
+                    
+                    // Resaltar el botón seleccionado
+                    estadoBtns.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+            
+            // Manejar envío del formulario
+            document.getElementById('statusForm').addEventListener('submit', function(e) {
+                if (!nuevoEstadoInput.value) {
+                    e.preventDefault();
+                    alert('Por favor, seleccione un estado para la reserva.');
+                    return;
+                }
+                
+                const estado = nuevoEstadoInput.value;
+                const config = estados[estado];
+                const confirmMessage = `¿Está completamente seguro de que desea ${config.texto.toLowerCase()}?`;
+                
+                if (!confirm(confirmMessage)) {
+                    e.preventDefault();
+                }
+            });
         });
     </script>
 </body>
