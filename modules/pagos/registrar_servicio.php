@@ -1,6 +1,6 @@
 <?php
 /**
- * Registrar Pago de Servicio
+ * Procesar Acciones de Pagos
  * Sistema de Gestión - Barbería Ortega
  */
 
@@ -8,278 +8,381 @@ require_once '../../config/config.php';
 requireLogin();
 
 $db = getDB();
+$action = isset($_POST['action']) ? $_POST['action'] : (isset($_GET['action']) ? $_GET['action'] : '');
 
-// Obtener reservas sin pagar
-$stmt = $db->query("
-    SELECT r.*, 
-           c.nombre as cliente_nombre,
-           u.nombre as barbero_nombre,
-           s.nombre as servicio_nombre,
-           s.precio
-    FROM reservas r
-    LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
-    LEFT JOIN usuarios u ON r.id_usuario = u.id_usuario
-    LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
-    WHERE r.pagado = FALSE 
-    AND r.estado IN ('confirmada', 'finalizada')
-    ORDER BY r.fecha_inicio DESC
-    LIMIT 50
-");
-$reservas = $stmt->fetchAll();
+// Para depuración
+error_log("=== PROCESAR PAGOS EJECUTADO ===");
+error_log("Action: " . $action);
 
-$pageTitle = "Registrar Pago de Servicio";
-include '../../includes/header.php';
-?>
-
-<div class="container-fluid py-4">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1>
-                    <i class="fas fa-cash-register text-primary"></i> 
-                    Registrar Pago de Servicio
-                </h1>
-                <a href="index.php" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </a>
-            </div>
-
-            <div class="card shadow">
-                <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0">
-                        <i class="fas fa-wpforms"></i> Formulario de Pago
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <form id="formPago" action="procesar.php" method="POST" class="needs-validation" novalidate>
-                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                        <input type="hidden" name="action" value="registrar_servicio">
-
-                        <div class="row">
-                            <!-- Seleccionar Reserva -->
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-calendar-check"></i> Seleccionar Reserva *
-                                </label>
-                                <select name="id_reserva" id="id_reserva" class="form-select" required>
-                                    <option value="">Seleccione una reserva...</option>
-                                    <?php foreach ($reservas as $reserva): ?>
-                                        <option value="<?php echo $reserva['id_reserva']; ?>" 
-                                                data-precio="<?php echo $reserva['precio']; ?>"
-                                                data-cliente="<?php echo $reserva['cliente_nombre']; ?>"
-                                                data-servicio="<?php echo $reserva['servicio_nombre']; ?>"
-                                                data-barbero="<?php echo $reserva['barbero_nombre']; ?>"
-                                                data-fecha="<?php echo $reserva['fecha_inicio']; ?>">
-                                            #<?php echo $reserva['id_reserva']; ?> - 
-                                            <?php echo $reserva['cliente_nombre']; ?> - 
-                                            <?php echo $reserva['servicio_nombre']; ?> - 
-                                            <?php echo formatDate($reserva['fecha_inicio']); ?> - 
-                                            <?php echo formatMoney($reserva['precio']); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div class="invalid-feedback">Seleccione una reserva</div>
-                            </div>
-
-                            <!-- Información de la Reserva -->
-                            <div class="col-md-12 mb-3" id="infoReserva" style="display: none;">
-                                <div class="alert alert-info">
-                                    <h6 class="alert-heading">
-                                        <i class="fas fa-info-circle"></i> Información de la Reserva
-                                    </h6>
-                                    <hr>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <p class="mb-1"><strong>Cliente:</strong> <span id="info_cliente"></span></p>
-                                            <p class="mb-1"><strong>Servicio:</strong> <span id="info_servicio"></span></p>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <p class="mb-1"><strong>Barbero:</strong> <span id="info_barbero"></span></p>
-                                            <p class="mb-1"><strong>Fecha:</strong> <span id="info_fecha"></span></p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Monto -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-dollar-sign"></i> Monto (Bs) *
-                                </label>
-                                <input type="number" 
-                                       name="monto" 
-                                       id="monto" 
-                                       class="form-control" 
-                                       step="0.01"
-                                       min="0"
-                                       required
-                                       readonly>
-                                <div class="invalid-feedback">Ingrese un monto válido</div>
-                            </div>
-
-                            <!-- Método de Pago -->
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">
-                                    <i class="fas fa-credit-card"></i> Método de Pago *
-                                </label>
-                                <select name="metodo" id="metodo" class="form-select" required>
-                                    <option value="">Seleccione...</option>
-                                    <option value="efectivo">💵 Efectivo</option>
-                                    <option value="tarjeta">💳 Tarjeta</option>
-                                    <option value="qr">📱 QR</option>
-                                    <option value="otro">💰 Otro</option>
-                                </select>
-                                <div class="invalid-feedback">Seleccione un método de pago</div>
-                            </div>
-
-                            <!-- Monto Recibido (solo para efectivo) -->
-                            <div class="col-md-6 mb-3" id="divMontoRecibido" style="display: none;">
-                                <label class="form-label">
-                                    <i class="fas fa-hand-holding-usd"></i> Monto Recibido (Bs)
-                                </label>
-                                <input type="number" 
-                                       name="monto_recibido" 
-                                       id="monto_recibido" 
-                                       class="form-control" 
-                                       step="0.01"
-                                       min="0"
-                                       placeholder="0.00">
-                                <small class="text-muted">Opcional - Para calcular cambio</small>
-                            </div>
-
-                            <!-- Cambio -->
-                            <div class="col-md-6 mb-3" id="divCambio" style="display: none;">
-                                <label class="form-label">
-                                    <i class="fas fa-exchange-alt"></i> Cambio
-                                </label>
-                                <input type="text" 
-                                       id="cambio" 
-                                       class="form-control" 
-                                       readonly
-                                       style="background-color: #e9ecef; font-weight: bold; color: #28a745;">
-                            </div>
-                        </div>
-
-                        <!-- Botones -->
-                        <div class="text-end mt-4">
-                            <a href="index.php" class="btn btn-secondary me-2">
-                                <i class="fas fa-times"></i> Cancelar
-                            </a>
-                            <button type="submit" class="btn btn-success btn-lg">
-                                <i class="fas fa-check"></i> Registrar Pago
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Reservas Pendientes -->
-            <?php if (count($reservas) == 0): ?>
-            <div class="alert alert-warning mt-4">
-                <i class="fas fa-exclamation-triangle"></i>
-                <strong>No hay reservas pendientes de pago</strong>
-                <p class="mb-0">Todas las reservas confirmadas y finalizadas están pagadas.</p>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</div>
-
-<script>
-$(document).ready(function() {
-    // Mostrar información al seleccionar reserva
-    $('#id_reserva').on('change', function() {
-        const selected = $(this).find(':selected');
-        
-        if (selected.val()) {
-            const precio = selected.data('precio');
-            const cliente = selected.data('cliente');
-            const servicio = selected.data('servicio');
-            const barbero = selected.data('barbero');
-            const fecha = selected.data('fecha');
+try {
+    switch ($action) {
+        case 'registrar_servicio':
+            error_log("Procesando registro de pago de servicio...");
             
-            $('#monto').val(parseFloat(precio).toFixed(2));
-            $('#info_cliente').text(cliente);
-            $('#info_servicio').text(servicio);
-            $('#info_barbero').text(barbero);
-            $('#info_fecha').text(formatearFecha(fecha));
-            $('#infoReserva').fadeIn();
-        } else {
-            $('#monto').val('');
-            $('#infoReserva').fadeOut();
-        }
-    });
-    
-    // Mostrar campos adicionales según método de pago
-    $('#metodo').on('change', function() {
-        if ($(this).val() === 'efectivo') {
-            $('#divMontoRecibido, #divCambio').fadeIn();
-        } else {
-            $('#divMontoRecibido, #divCambio').fadeOut();
-            $('#monto_recibido').val('');
-            $('#cambio').val('');
-        }
-    });
-    
-    // Calcular cambio
-    $('#monto_recibido').on('input', function() {
-        const monto = parseFloat($('#monto').val()) || 0;
-        const recibido = parseFloat($(this).val()) || 0;
-        const cambio = recibido - monto;
-        
-        if (cambio >= 0) {
-            $('#cambio').val('Bs ' + cambio.toFixed(2));
-            $('#cambio').css('color', '#28a745');
-        } else {
-            $('#cambio').val('Falta: Bs ' + Math.abs(cambio).toFixed(2));
-            $('#cambio').css('color', '#dc3545');
-        }
-    });
-    
-    // Validación del formulario
-    $('#formPago').on('submit', function(e) {
-        if (!this.checkValidity()) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            Swal.fire({
-                icon: 'warning',
-                title: 'Campos incompletos',
-                text: 'Por favor complete todos los campos obligatorios',
-                confirmButtonColor: '#4e73df'
-            });
-        } else {
-            // Validar que el monto recibido sea suficiente si es efectivo
-            if ($('#metodo').val() === 'efectivo' && $('#monto_recibido').val()) {
-                const monto = parseFloat($('#monto').val()) || 0;
-                const recibido = parseFloat($('#monto_recibido').val()) || 0;
-                
-                if (recibido < monto) {
-                    e.preventDefault();
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Monto insuficiente',
-                        text: 'El monto recibido es menor al monto a pagar',
-                        confirmButtonColor: '#dc3545'
-                    });
-                    return false;
-                }
+            // Verificar token CSRF si está configurado
+            if (function_exists('verifyCSRFToken') && (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token']))) {
+                throw new Exception('Token de seguridad inválido');
             }
-        }
-        $(this).addClass('was-validated');
-    });
-    
-    function formatearFecha(fecha) {
-        const date = new Date(fecha);
-        return date.toLocaleDateString('es-BO', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-});
-</script>
+            
+            // Obtener datos
+            $id_reserva = isset($_POST['id_reserva']) ? intval($_POST['id_reserva']) : 0;
+            $monto = isset($_POST['monto']) ? floatval($_POST['monto']) : 0;
+            $metodo = isset($_POST['metodo']) ? trim($_POST['metodo']) : '';
+            
+            error_log("Datos recibidos - ID Reserva: $id_reserva, Monto: $monto, Método: $metodo");
+            
+            // Validaciones básicas
+            if (empty($id_reserva) || $id_reserva <= 0) {
+                throw new Exception('ID de reserva inválido');
+            }
+            
+            if ($monto <= 0) {
+                throw new Exception('El monto debe ser mayor a cero');
+            }
+            
+            if (empty($metodo)) {
+                throw new Exception('Debe seleccionar un método de pago');
+            }
+            
+            // Verificar que la reserva existe
+            $stmt = $db->prepare("
+                SELECT r.*, s.precio, c.nombre as cliente_nombre,
+                       r.estado, r.pagado
+                FROM reservas r
+                LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
+                LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
+                WHERE r.id_reserva = ?
+            ");
+            $stmt->execute([$id_reserva]);
+            $reserva = $stmt->fetch();
+            
+            if (!$reserva) {
+                throw new Exception('La reserva no existe');
+            }
+            
+            error_log("Reserva encontrada - Estado: {$reserva['estado']}, Pagado: {$reserva['pagado']}");
+            
+            // Verificar que no esté ya pagada
+            if ($reserva['pagado']) {
+                throw new Exception('Esta reserva ya está pagada');
+            }
+            
+            // Verificar que la reserva esté en estado válido para pago
+            if (!in_array($reserva['estado'], ['confirmada', 'finalizada'])) {
+                throw new Exception('Solo se pueden pagar reservas confirmadas o finalizadas. Estado actual: ' . $reserva['estado']);
+            }
+            
+            // Iniciar transacción
+            $db->beginTransaction();
+            
+            try {
+                // Insertar pago
+                $stmt = $db->prepare("
+                    INSERT INTO pagos (id_reserva, monto, metodo, id_usuario, fecha_pago)
+                    VALUES (?, ?, ?, ?, NOW())
+                ");
+                $stmt->execute([$id_reserva, $monto, $metodo, $_SESSION['id_usuario']]);
+                
+                $id_pago = $db->lastInsertId();
+                error_log("Pago insertado - ID: $id_pago");
+                
+                // Marcar reserva como pagada
+                $stmt = $db->prepare("UPDATE reservas SET pagado = TRUE WHERE id_reserva = ?");
+                $stmt->execute([$id_reserva]);
+                error_log("Reserva marcada como pagada");
+                
+                // Registrar en auditoría
+                $accion = "Registró pago de servicio - Reserva #$id_reserva - Cliente: {$reserva['cliente_nombre']} - Monto: " . formatMoney($monto);
+                $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+                $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+                error_log("Auditoría registrada");
+                
+                $db->commit();
+                error_log("Transacción completada con éxito");
+                
+                setAlert('success', 'Pago registrado', 'El pago se registró correctamente y la reserva fue marcada como pagada');
+                header('Location: index.php');
+                exit();
+                
+            } catch (Exception $e) {
+                $db->rollBack();
+                error_log("Error en transacción: " . $e->getMessage());
+                throw new Exception('Error al registrar el pago: ' . $e->getMessage());
+            }
+            break; // ✅ BREAK CRÍTICO AQUÍ
 
-<?php include '../../includes/footer.php'; ?>
+        case 'registrar_alquiler':
+            error_log("Procesando registro de pago de alquiler...");
+            
+            // Verificar token CSRF si está configurado
+            if (function_exists('verifyCSRFToken') && (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token']))) {
+                throw new Exception('Token de seguridad inválido');
+            }
+            
+            // Obtener datos
+            $id_alquiler = isset($_POST['id_alquiler']) ? intval($_POST['id_alquiler']) : 0;
+            $monto = isset($_POST['monto']) ? floatval($_POST['monto']) : 0;
+            $metodo = isset($_POST['metodo']) ? trim($_POST['metodo']) : '';
+            $concepto = isset($_POST['concepto']) ? trim($_POST['concepto']) : '';
+            
+            error_log("Datos recibidos - ID Alquiler: $id_alquiler, Monto: $monto, Método: $metodo");
+            
+            // Validaciones básicas
+            if (empty($id_alquiler) || $id_alquiler <= 0) {
+                throw new Exception('ID de alquiler inválido');
+            }
+            
+            if ($monto <= 0) {
+                throw new Exception('El monto debe ser mayor a cero');
+            }
+            
+            if (empty($metodo)) {
+                throw new Exception('Debe seleccionar un método de pago');
+            }
+            
+            // Verificar que el alquiler existe y está vigente
+            $stmt = $db->prepare("
+                SELECT a.*, e.nombre as estacion_nombre, u.nombre as usuario_nombre
+                FROM alquileres a
+                LEFT JOIN estaciones e ON a.id_estacion = e.id_estacion
+                LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+                WHERE a.id_alquiler = ? AND a.estado = 'vigente'
+            ");
+            $stmt->execute([$id_alquiler]);
+            $alquiler = $stmt->fetch();
+            
+            if (!$alquiler) {
+                throw new Exception('El alquiler no existe o no está vigente');
+            }
+            
+            // Insertar pago de alquiler
+            $stmt = $db->prepare("
+                INSERT INTO pagos_alquiler (id_alquiler, monto, metodo, fecha_pago)
+                VALUES (?, ?, ?, NOW())
+            ");
+            $stmt->execute([$id_alquiler, $monto, $metodo]);
+            
+            $id_pago_alquiler = $db->lastInsertId();
+            error_log("Pago de alquiler insertado - ID: $id_pago_alquiler");
+            
+            // Registrar en auditoría
+            $accion_concepto = $concepto ? " - Concepto: $concepto" : "";
+            $accion = "Registró pago de alquiler - Contrato #$id_alquiler - Estación: {$alquiler['estacion_nombre']} - Monto: " . formatMoney($monto) . $accion_concepto;
+            $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+            $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+            
+            setAlert('success', 'Pago registrado', 'El pago de alquiler se registró correctamente');
+            header('Location: index.php?tipo=alquileres');
+            exit();
+            break; // ✅ BREAK CRÍTICO AQUÍ
+
+        case 'marcar_pagado_rapido':
+            // Solo administradores pueden marcar pagos rápidos
+            if (!hasRole(ROLE_ADMIN)) {
+                throw new Exception('No tienes permisos para realizar esta acción');
+            }
+            
+            $id_reserva = isset($_GET['id']) ? intval($_GET['id']) : 0;
+            
+            if (empty($id_reserva)) {
+                throw new Exception('ID de reserva inválido');
+            }
+            
+            // Verificar que la reserva existe y no está pagada
+            $stmt = $db->prepare("
+                SELECT r.*, s.precio, c.nombre as cliente_nombre
+                FROM reservas r
+                LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
+                LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
+                WHERE r.id_reserva = ? AND r.pagado = FALSE
+            ");
+            $stmt->execute([$id_reserva]);
+            $reserva = $stmt->fetch();
+            
+            if (!$reserva) {
+                throw new Exception('La reserva no existe o ya está pagada');
+            }
+            
+            // Verificar que la reserva esté en estado válido para pago
+            if (!in_array($reserva['estado'], ['confirmada', 'finalizada'])) {
+                throw new Exception('Solo se pueden pagar reservas confirmadas o finalizadas');
+            }
+            
+            // Iniciar transacción
+            $db->beginTransaction();
+            
+            try {
+                // Insertar pago en efectivo por defecto
+                $stmt = $db->prepare("
+                    INSERT INTO pagos (id_reserva, monto, metodo, id_usuario, fecha_pago)
+                    VALUES (?, ?, 'efectivo', ?, NOW())
+                ");
+                $stmt->execute([$id_reserva, $reserva['precio'], $_SESSION['id_usuario']]);
+                
+                // Marcar reserva como pagada
+                $stmt = $db->prepare("UPDATE reservas SET pagado = TRUE WHERE id_reserva = ?");
+                $stmt->execute([$id_reserva]);
+                
+                // Registrar en auditoría
+                $accion = "Marcó como pagada la reserva #$id_reserva - Cliente: {$reserva['cliente_nombre']} - Monto: " . formatMoney($reserva['precio']);
+                $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+                $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+                
+                $db->commit();
+                
+                setAlert('success', 'Pago registrado', 'La reserva se marcó como pagada correctamente');
+                header('Location: index.php');
+                exit();
+                
+            } catch (Exception $e) {
+                $db->rollBack();
+                throw new Exception('Error al registrar el pago: ' . $e->getMessage());
+            }
+            break; // ✅ BREAK CRÍTICO AQUÍ
+
+        case 'eliminar_pago_servicio':
+            // Solo administradores pueden eliminar pagos
+            if (!hasRole(ROLE_ADMIN)) {
+                throw new Exception('No tienes permisos para realizar esta acción');
+            }
+            
+            $id_pago = intval($_GET['id']);
+            
+            // Verificar que el pago existe
+            $stmt = $db->prepare("
+                SELECT p.*, r.id_reserva, c.nombre as cliente_nombre
+                FROM pagos p
+                LEFT JOIN reservas r ON p.id_reserva = r.id_reserva
+                LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
+                WHERE p.id_pago = ?
+            ");
+            $stmt->execute([$id_pago]);
+            $pago = $stmt->fetch();
+            
+            if (!$pago) {
+                throw new Exception('El pago no existe');
+            }
+            
+            // Iniciar transacción
+            $db->beginTransaction();
+            
+            try {
+                // Eliminar pago
+                $stmt = $db->prepare("DELETE FROM pagos WHERE id_pago = ?");
+                $stmt->execute([$id_pago]);
+                
+                // Marcar reserva como no pagada
+                $stmt = $db->prepare("UPDATE reservas SET pagado = FALSE WHERE id_reserva = ?");
+                $stmt->execute([$pago['id_reserva']]);
+                
+                // Registrar en auditoría
+                $accion = "Eliminó pago de servicio #$id_pago - Reserva #{$pago['id_reserva']} - Cliente: {$pago['cliente_nombre']}";
+                $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+                $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+                
+                $db->commit();
+                
+                setAlert('success', 'Pago eliminado', 'El pago fue eliminado y la reserva marcada como no pagada');
+                header('Location: index.php');
+                exit();
+                
+            } catch (Exception $e) {
+                $db->rollBack();
+                throw new Exception('Error al eliminar el pago: ' . $e->getMessage());
+            }
+            break; // ✅ BREAK CRÍTICO AQUÍ
+
+        case 'eliminar_pago_alquiler':
+            // Solo administradores pueden eliminar pagos
+            if (!hasRole(ROLE_ADMIN)) {
+                throw new Exception('No tienes permisos para realizar esta acción');
+            }
+            
+            $id_pago = intval($_GET['id']);
+            
+            // Verificar que el pago existe
+            $stmt = $db->prepare("
+                SELECT pa.*, a.id_alquiler, e.nombre as estacion_nombre
+                FROM pagos_alquiler pa
+                LEFT JOIN alquileres a ON pa.id_alquiler = a.id_alquiler
+                LEFT JOIN estaciones e ON a.id_estacion = e.id_estacion
+                WHERE pa.id_pago_alquiler = ?
+            ");
+            $stmt->execute([$id_pago]);
+            $pago = $stmt->fetch();
+            
+            if (!$pago) {
+                throw new Exception('El pago no existe');
+            }
+            
+            // Eliminar pago de alquiler
+            $stmt = $db->prepare("DELETE FROM pagos_alquiler WHERE id_pago_alquiler = ?");
+            $stmt->execute([$id_pago]);
+            
+            // Registrar en auditoría
+            $accion = "Eliminó pago de alquiler #$id_pago - Contrato #{$pago['id_alquiler']} - Estación: {$pago['estacion_nombre']}";
+            $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+            $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+            
+            setAlert('success', 'Pago eliminado', 'El pago de alquiler fue eliminado correctamente');
+            header('Location: index.php?tipo=alquileres');
+            exit();
+            break; // ✅ BREAK CRÍTICO AQUÍ
+
+        case 'editar_pago_servicio':
+            // Solo administradores pueden editar pagos
+            if (!hasRole(ROLE_ADMIN)) {
+                throw new Exception('No tienes permisos para realizar esta acción');
+            }
+            
+            $id_pago = intval($_POST['id_pago']);
+            $monto = floatval($_POST['monto']);
+            $metodo = $_POST['metodo'];
+            
+            // Validaciones
+            if (empty($id_pago) || $monto <= 0 || empty($metodo)) {
+                throw new Exception('Todos los campos obligatorios deben ser completados');
+            }
+            
+            // Verificar que el pago existe
+            $stmt = $db->prepare("SELECT * FROM pagos WHERE id_pago = ?");
+            $stmt->execute([$id_pago]);
+            $pago_existente = $stmt->fetch();
+            
+            if (!$pago_existente) {
+                throw new Exception('El pago no existe');
+            }
+            
+            // Actualizar pago
+            $stmt = $db->prepare("UPDATE pagos SET monto = ?, metodo = ? WHERE id_pago = ?");
+            $stmt->execute([$monto, $metodo, $id_pago]);
+            
+            // Registrar en auditoría
+            $accion = "Editó pago de servicio #$id_pago - Nuevo monto: " . formatMoney($monto) . " - Método: $metodo";
+            $stmt_auditoria = $db->prepare("INSERT INTO auditoria (id_usuario, accion) VALUES (?, ?)");
+            $stmt_auditoria->execute([$_SESSION['id_usuario'], $accion]);
+            
+            setAlert('success', 'Pago actualizado', 'El pago fue actualizado correctamente');
+            header('Location: index.php');
+            exit();
+            break; // ✅ BREAK CRÍTICO AQUÍ
+
+        default:
+            throw new Exception('Acción no válida: ' . $action);
+    }
+    
+} catch (Exception $e) {
+    error_log("Error en pagos/procesar.php: " . $e->getMessage());
+    setAlert('error', 'Error', $e->getMessage());
+    
+    // Redirigir según el contexto
+    if ($action == 'registrar_servicio') {
+        header('Location: registrar_servicio.php');
+    } else if ($action == 'registrar_alquiler') {
+        header('Location: registrar_alquiler.php');
+    } else {
+        header('Location: index.php');
+    }
+    exit();
+}
+?>

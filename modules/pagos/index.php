@@ -72,6 +72,22 @@ if ($filtroTipo == 'servicios') {
     $pagos = $stmt->fetchAll();
 }
 
+// Obtener reservas pendientes de pago para el botón rápido
+$reservasPendientes = [];
+if ($filtroTipo == 'servicios') {
+    $stmtReservas = $db->query("
+        SELECT r.id_reserva, c.nombre as cliente_nombre, s.nombre as servicio_nombre, s.precio
+        FROM reservas r
+        LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
+        LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
+        WHERE r.pagado = FALSE 
+        AND r.estado IN ('confirmada', 'finalizada')
+        ORDER BY r.fecha_inicio DESC
+        LIMIT 10
+    ");
+    $reservasPendientes = $stmtReservas->fetchAll();
+}
+
 // Estadísticas del período
 if ($filtroTipo == 'servicios') {
     $stmtStats = $db->prepare("
@@ -121,9 +137,35 @@ include '../../includes/header.php';
             <p class="text-muted">Administra los pagos de servicios y alquileres</p>
         </div>
         <div class="col-md-4 text-end">
-            <button type="button" class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalRegistrarPago">
-                <i class="fas fa-plus"></i> Registrar Pago
-            </button>
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalRegistrarPago">
+                    <i class="fas fa-plus"></i> Registrar Pago
+                </button>
+                <?php if ($filtroTipo == 'servicios' && count($reservasPendientes) > 0): ?>
+                <button type="button" class="btn btn-success btn-lg dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                    <span class="visually-hidden">Pagos Rápidos</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><h6 class="dropdown-header">Pagos Rápidos - Servicios</h6></li>
+                    <?php foreach ($reservasPendientes as $reserva): ?>
+                    <li>
+                        <a class="dropdown-item" href="procesar.php?action=marcar_pagado_rapido&id=<?php echo $reserva['id_reserva']; ?>" 
+                           onclick="return confirm('¿Marcar como pagada la reserva #<?php echo $reserva['id_reserva']; ?>?')">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small><strong>#<?php echo $reserva['id_reserva']; ?></strong> - <?php echo $reserva['cliente_nombre']; ?></small><br>
+                                    <small class="text-muted"><?php echo $reserva['servicio_nombre']; ?> - <?php echo formatMoney($reserva['precio']); ?></small>
+                                </div>
+                                <span class="badge bg-success">Efectivo</span>
+                            </div>
+                        </a>
+                    </li>
+                    <?php endforeach; ?>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item text-center" href="registrar_servicio.php">Ver todas las reservas...</a></li>
+                </ul>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -133,12 +175,18 @@ include '../../includes/header.php';
             <a class="nav-link <?php echo $filtroTipo == 'servicios' ? 'active' : ''; ?>" 
                href="?tipo=servicios&fecha_inicio=<?php echo $filtroFechaInicio; ?>&fecha_fin=<?php echo $filtroFechaFin; ?>">
                 <i class="fas fa-scissors"></i> Pagos de Servicios
+                <?php if ($filtroTipo == 'servicios'): ?>
+                <span class="badge bg-primary ms-1"><?php echo count($pagos); ?></span>
+                <?php endif; ?>
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link <?php echo $filtroTipo == 'alquileres' ? 'active' : ''; ?>" 
                href="?tipo=alquileres&fecha_inicio=<?php echo $filtroFechaInicio; ?>&fecha_fin=<?php echo $filtroFechaFin; ?>">
                 <i class="fas fa-chair"></i> Pagos de Alquileres
+                <?php if ($filtroTipo == 'alquileres'): ?>
+                <span class="badge bg-primary ms-1"><?php echo count($pagos); ?></span>
+                <?php endif; ?>
             </a>
         </li>
     </ul>
@@ -259,6 +307,7 @@ include '../../includes/header.php';
             <h6 class="mb-0">
                 <i class="fas fa-list"></i> 
                 Lista de Pagos - <?php echo $filtroTipo == 'servicios' ? 'Servicios' : 'Alquileres'; ?>
+                <small class="float-end">Mostrando <?php echo count($pagos); ?> pago(s)</small>
             </h6>
         </div>
         <div class="card-body">
@@ -334,11 +383,31 @@ include '../../includes/header.php';
                                     </small>
                                 </td>
                                 <td>
-                                    <button type="button" 
-                                            class="btn btn-sm btn-info" 
-                                            onclick="verDetallePago(<?php echo htmlspecialchars(json_encode($pago)); ?>, '<?php echo $filtroTipo; ?>')">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" 
+                                                class="btn btn-info" 
+                                                onclick="verDetallePago(<?php echo htmlspecialchars(json_encode($pago)); ?>, '<?php echo $filtroTipo; ?>')"
+                                                data-bs-toggle="tooltip" title="Ver detalles">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <?php if (hasRole(ROLE_ADMIN)): ?>
+                                            <?php if ($filtroTipo == 'servicios'): ?>
+                                                <a href="procesar.php?action=eliminar_pago_servicio&id=<?php echo $pago['id_pago']; ?>" 
+                                                   class="btn btn-danger"
+                                                   onclick="return confirm('¿Está seguro de eliminar este pago?')"
+                                                   data-bs-toggle="tooltip" title="Eliminar pago">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <a href="procesar.php?action=eliminar_pago_alquiler&id=<?php echo $pago['id_pago_alquiler']; ?>" 
+                                                   class="btn btn-danger"
+                                                   onclick="return confirm('¿Está seguro de eliminar este pago?')"
+                                                   data-bs-toggle="tooltip" title="Eliminar pago">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -360,6 +429,15 @@ include '../../includes/header.php';
                 <div class="text-center py-5 text-muted">
                     <i class="fas fa-inbox fa-3x mb-3"></i>
                     <p>No hay pagos registrados en este período</p>
+                    <?php if ($filtroTipo == 'servicios'): ?>
+                        <a href="registrar_servicio.php" class="btn btn-primary mt-3">
+                            <i class="fas fa-plus"></i> Registrar Primer Pago de Servicio
+                        </a>
+                    <?php else: ?>
+                        <a href="registrar_alquiler.php" class="btn btn-success mt-3">
+                            <i class="fas fa-plus"></i> Registrar Primer Pago de Alquiler
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>
@@ -397,26 +475,87 @@ include '../../includes/header.php';
 
 <!-- Modal Registrar Pago -->
 <div class="modal fade" id="modalRegistrarPago" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title">
-                    <i class="fas fa-dollar-sign"></i> Registrar Pago Rápido
+                    <i class="fas fa-dollar-sign"></i> Registrar Pago
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body text-center py-5">
-                <p class="mb-4">Seleccione el tipo de pago que desea registrar:</p>
-                <div class="d-grid gap-3">
-                    <a href="registrar_servicio.php" class="btn btn-lg btn-primary">
-                        <i class="fas fa-scissors fa-2x mb-2"></i><br>
-                        Pago de Servicio
-                    </a>
-                    <a href="registrar_alquiler.php" class="btn btn-lg btn-success">
-                        <i class="fas fa-chair fa-2x mb-2"></i><br>
-                        Pago de Alquiler
-                    </a>
+            <div class="modal-body">
+                <p class="mb-4 text-center">Seleccione el tipo de pago que desea registrar:</p>
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body text-center">
+                                <i class="fas fa-scissors fa-3x text-primary mb-3"></i>
+                                <h5 class="card-title">Pago de Servicio</h5>
+                                <p class="card-text">Registrar pago por servicios de barbería</p>
+                                <a href="registrar_servicio.php" class="btn btn-primary btn-lg w-100">
+                                    <i class="fas fa-arrow-right"></i> Acceder
+                                </a>
+                                <?php if (count($reservasPendientes) > 0): ?>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i> 
+                                        <?php echo count($reservasPendientes); ?> reservas pendientes
+                                    </small>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-body text-center">
+                                <i class="fas fa-chair fa-3x text-success mb-3"></i>
+                                <h5 class="card-title">Pago de Alquiler</h5>
+                                <p class="card-text">Registrar pago por alquiler de estaciones</p>
+                                <a href="registrar_alquiler.php" class="btn btn-success btn-lg w-100">
+                                    <i class="fas fa-arrow-right"></i> Acceder
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <?php if (count($reservasPendientes) > 0): ?>
+                <div class="mt-4">
+                    <h6 class="text-muted border-bottom pb-2">
+                        <i class="fas fa-clock"></i> Reservas Pendientes de Pago
+                    </h6>
+                    <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
+                        <?php foreach (array_slice($reservasPendientes, 0, 5) as $reserva): ?>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div class="flex-grow-1">
+                                <small class="fw-bold text-primary">#<?php echo $reserva['id_reserva']; ?></small>
+                                <small class="d-block"><?php echo $reserva['cliente_nombre']; ?></small>
+                                <small class="text-muted"><?php echo $reserva['servicio_nombre']; ?></small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-warning"><?php echo formatMoney($reserva['precio']); ?></span>
+                                <a href="procesar.php?action=marcar_pagado_rapido&id=<?php echo $reserva['id_reserva']; ?>" 
+                                   class="btn btn-sm btn-success mt-1"
+                                   onclick="return confirm('¿Marcar como pagada la reserva #<?php echo $reserva['id_reserva']; ?>?')"
+                                   data-bs-toggle="tooltip" title="Pago rápido en efectivo">
+                                    <i class="fas fa-bolt"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if (count($reservasPendientes) > 5): ?>
+                        <div class="list-group-item text-center">
+                            <small class="text-muted">
+                                Y <?php echo count($reservasPendientes) - 5; ?> reservas más...
+                            </small>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -441,6 +580,14 @@ include '../../includes/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+// Configurar tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
 // Gráfico de métodos de pago
 const ctxMetodos = document.getElementById('chartMetodos').getContext('2d');
 new Chart(ctxMetodos, {
@@ -504,9 +651,11 @@ function verDetallePago(pago, tipo) {
     if (tipo == 'servicios') {
         html += `<dt class="col-sm-4">Cliente:</dt><dd class="col-sm-8">${pago.cliente_nombre || 'N/A'}</dd>`;
         html += `<dt class="col-sm-4">Servicio:</dt><dd class="col-sm-8">${pago.servicio_nombre || 'N/A'}</dd>`;
+        html += `<dt class="col-sm-4">ID Reserva:</dt><dd class="col-sm-8">#${pago.id_reserva || 'N/A'}</dd>`;
     } else {
         html += `<dt class="col-sm-4">Estación:</dt><dd class="col-sm-8">${pago.estacion_nombre || 'N/A'}</dd>`;
         html += `<dt class="col-sm-4">Arrendatario:</dt><dd class="col-sm-8">${pago.usuario_nombre || 'N/A'}</dd>`;
+        html += `<dt class="col-sm-4">ID Alquiler:</dt><dd class="col-sm-8">#${pago.id_alquiler || 'N/A'}</dd>`;
     }
     
     html += `<dt class="col-sm-4">Registrado por:</dt><dd class="col-sm-8">${pago.usuario_nombre || 'Sistema'}</dd>`;
