@@ -74,7 +74,8 @@ try {
             // Registrar en auditoría
             logAudit($_SESSION['user_id'], "Creó reserva #$id_reserva para cliente #$id_cliente");
             
-            setAlert('success', 'Reserva creada', 'La reserva se registró correctamente');
+            // CORREGIDO: Usar sistema de sesiones en lugar de setAlert()
+            $_SESSION['success'] = 'Reserva creada correctamente';
             header('Location: index.php');
             exit();
             
@@ -144,7 +145,8 @@ try {
             
             logAudit($_SESSION['user_id'], "Editó reserva #$id_reserva");
             
-            setAlert('success', 'Reserva actualizada', 'Los cambios se guardaron correctamente');
+            // CORREGIDO: Usar sistema de sesiones
+            $_SESSION['success'] = 'Reserva actualizada correctamente';
             header('Location: index.php');
             exit();
             
@@ -163,7 +165,8 @@ try {
             
             logAudit($_SESSION['user_id'], "Cambió estado de reserva #$id_reserva a '$nuevo_estado'");
             
-            setAlert('success', 'Estado actualizado', "La reserva ahora está en estado: $nuevo_estado");
+            // CORREGIDO: Usar sistema de sesiones
+            $_SESSION['success'] = "Estado actualizado: $nuevo_estado";
             header('Location: index.php');
             exit();
             
@@ -175,7 +178,8 @@ try {
             
             logAudit($_SESSION['user_id'], "Marcó como pagada la reserva #$id_reserva");
             
-            setAlert('success', 'Pago registrado', 'La reserva se marcó como pagada');
+            // CORREGIDO: Usar sistema de sesiones
+            $_SESSION['success'] = 'Reserva marcada como pagada';
             header('Location: ver.php?id=' . $id_reserva);
             exit();
             
@@ -196,7 +200,8 @@ try {
             
             logAudit($_SESSION['user_id'], "Eliminó reserva #$id_reserva (Cliente: {$reserva['id_cliente']}, Fecha: {$reserva['fecha_inicio']})");
             
-            setAlert('success', 'Reserva eliminada', 'La reserva se eliminó correctamente');
+            // CORREGIDO: Usar sistema de sesiones
+            $_SESSION['success'] = 'Reserva eliminada correctamente';
             header('Location: index.php');
             exit();
             
@@ -206,7 +211,9 @@ try {
     
 } catch (Exception $e) {
     error_log("Error en reservas/procesar.php: " . $e->getMessage());
-    setAlert('error', 'Error', $e->getMessage());
+    
+    // CORREGIDO: Usar sistema de sesiones para errores
+    $_SESSION['error'] = $e->getMessage();
     
     // Redirigir según el contexto
     if (isset($_POST['id_reserva'])) {
@@ -218,4 +225,3 @@ try {
     }
     exit();
 }
-?>

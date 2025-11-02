@@ -11,7 +11,7 @@ $db = getDB();
 $id_reserva = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if (!$id_reserva) {
-    setAlert('error', 'Error', 'ID de reserva no válido');
+    $_SESSION['error'] = 'ID de reserva no válido';
     header('Location: index.php');
     exit();
 }
@@ -29,7 +29,7 @@ $stmt->execute([$id_reserva]);
 $reserva = $stmt->fetch();
 
 if (!$reserva) {
-    setAlert('error', 'Error', 'Reserva no encontrada');
+    $_SESSION['error'] = 'Reserva no encontrada';
     header('Location: index.php');
     exit();
 }
@@ -61,6 +61,22 @@ include '../../includes/header.php';
                 <a href="index.php" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Volver
                 </a>
+            </div>
+
+            <!-- Información del estado actual -->
+            <div class="alert alert-info mb-4">
+                <h6><i class="fas fa-info-circle"></i> Información de la Reserva</h6>
+                <p class="mb-1"><strong>Estado actual:</strong> 
+                    <span class="badge status-<?php echo $reserva['estado']; ?>">
+                        <?php echo ucfirst($reserva['estado']); ?>
+                    </span>
+                </p>
+                <p class="mb-0"><strong>Acción disponible:</strong> 
+                    <?php 
+                    $accion_disponible = ($reserva['estado'] == 'cancelada') ? 'Reactivar reserva' : 'Cancelar reserva';
+                    echo $accion_disponible; 
+                    ?>
+                </p>
             </div>
 
             <div class="card shadow">
@@ -205,6 +221,24 @@ include '../../includes/header.php';
                             <a href="index.php" class="btn btn-secondary me-2">
                                 <i class="fas fa-times"></i> Cancelar
                             </a>
+                            
+                            <!-- Botón Cancelar/Reactivar Reserva -->
+                            <?php
+                            $texto_boton = ($reserva['estado'] == 'cancelada') ? 'Reactivar Reserva' : 'Cancelar Reserva';
+                            $clase_boton = ($reserva['estado'] == 'cancelada') ? 'btn-warning' : 'btn-danger';
+                            $icono = ($reserva['estado'] == 'cancelada') ? 'fa-undo' : 'fa-times';
+                            $mensaje_confirmacion = ($reserva['estado'] == 'cancelada') 
+                                ? '¿Está seguro de reactivar esta reserva?' 
+                                : '¿Está seguro de cancelar esta reserva?';
+                            ?>
+                            
+                            <button type="button" 
+                                    class="btn <?php echo $clase_boton; ?> me-2"
+                                    onclick="confirmarCancelacion(<?php echo $reserva['id_reserva']; ?>, '<?php echo $mensaje_confirmacion; ?>')">
+                                <i class="fas <?php echo $icono; ?>"></i>
+                                <?php echo $texto_boton; ?>
+                            </button>
+                            
                             <button type="submit" class="btn btn-warning">
                                 <i class="fas fa-save"></i> Guardar Cambios
                             </button>
@@ -253,6 +287,38 @@ $(document).ready(function() {
         $(this).addClass('was-validated');
     });
 });
+
+// Función para cancelar/reactivar reserva
+function confirmarCancelacion(idReserva, mensaje) {
+    Swal.fire({
+        title: '¿Confirmar acción?',
+        text: mensaje,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: '<i class="fas fa-check"></i> Sí, confirmar',
+        cancelButtonText: '<i class="fas fa-times"></i> Cancelar',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Mostrar carga
+            Swal.fire({
+                title: 'Procesando...',
+                text: 'Actualizando estado de la reserva',
+                icon: 'info',
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            // Redirigir al archivo eliminar.php
+            window.location.href = `eliminar.php?id=${idReserva}`;
+        }
+    });
+}
 </script>
 
 <?php include '../../includes/footer.php'; ?>

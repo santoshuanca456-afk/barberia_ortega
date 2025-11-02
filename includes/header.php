@@ -20,14 +20,22 @@ if (!isset($pageTitle)) {
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- SweetAlert2 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <!-- SweetAlert2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
     
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     
+    <!-- jQuery (necesario para SweetAlert2 con Bootstrap) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    
     <!-- Estilos personalizados -->
     <link rel="stylesheet" href="<?php echo ASSETS_PATH; ?>css/style.css">
+    
+    <!-- CSS adicional -->
+    <?php if (isset($css_extra)): ?>
+        <?php echo $css_extra; ?>
+    <?php endif; ?>
     
     <style>
         body {
@@ -232,6 +240,103 @@ if (!isset($pageTitle)) {
             background: rgba(255,255,255,0.2);
             font-weight: 600;
         }
+
+        /* Estilos para SweetAlert2 personalizados */
+        .swal2-popup {
+            border-radius: 12px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .swal2-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .swal2-confirm {
+            border-radius: 8px;
+            padding: 10px 25px;
+        }
+        
+        .swal2-cancel {
+            border-radius: 8px;
+            padding: 10px 25px;
+        }
+
+        /* Estilos para SweetAlert2 en esquina superior derecha */
+        .swal2-toast {
+            border-radius: 8px !important;
+            margin: 10px !important;
+        }
+
+        .swal2-popup.swal2-toast {
+            padding: 15px 20px !important;
+        }
+
+        /* Asegurar que las alertas toast no sean muy grandes */
+        .swal2-toast .swal2-title {
+            font-size: 14px !important;
+            margin: 0 !important;
+        }
+
+        /* Animación personalizada para entrada desde la derecha */
+        @keyframes bounceInRight {
+            from, 60%, 75%, 90%, to {
+                animation-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
+            }
+            from {
+                opacity: 0;
+                transform: translate3d(3000px, 0, 0);
+            }
+            60% {
+                opacity: 1;
+                transform: translate3d(-25px, 0, 0);
+            }
+            75% {
+                transform: translate3d(10px, 0, 0);
+            }
+            90% {
+                transform: translate3d(-5px, 0, 0);
+            }
+            to {
+                transform: none;
+            }
+        }
+
+        .animated.bounceInRight {
+            animation-name: bounceInRight;
+            animation-duration: 0.8s;
+        }
+
+        /* Estilos para el dropdown de notificaciones */
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #e74a3b;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notification-item {
+            border-left: 3px solid #4e73df;
+            margin-bottom: 5px;
+        }
+
+        .notification-item.unread {
+            background-color: #f8f9fc;
+            border-left-color: #e74a3b;
+        }
+
+        .notification-time {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body>
@@ -339,6 +444,13 @@ if (!isset($pageTitle)) {
                             <i class="fas fa-file-invoice-dollar"></i> Gestión de Alquileres
                         </a>
                     </li>
+                    <!-- NUEVO: Pago de Alquileres -->
+                    <li>
+                        <a class="dropdown-item <?php echo strpos($_SERVER['PHP_SELF'], 'pagoalquiler') !== false ? 'active' : ''; ?>" 
+                           href="<?php echo SITE_URL; ?>modules/pagoalquiler/">
+                            <i class="fas fa-receipt"></i> Pagos de Alquileres
+                        </a>
+                    </li>
                     <li>
                         <a class="dropdown-item <?php echo strpos($_SERVER['PHP_SELF'], 'reportes') !== false ? 'active' : ''; ?>" 
                            href="<?php echo SITE_URL; ?>modules/reportes/">
@@ -352,7 +464,7 @@ if (!isset($pageTitle)) {
         
         <!-- Sección de Cerrar Sesión al fondo -->
         <div class="logout-section">
-            <a class="logout-btn" href="<?php echo SITE_URL; ?>modules/auth/logout.php">
+            <a class="logout-btn" href="<?php echo SITE_URL; ?>modules/auth/logout.php" id="logoutBtn">
                 <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
             </a>
         </div>
@@ -365,6 +477,94 @@ if (!isset($pageTitle)) {
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 text-gray-800"><?php echo $pageTitle; ?></h5>
                 <div class="d-flex align-items-center">
+                    <!-- Dropdown de Notificaciones - VERSIÓN CORREGIDA -->
+                    <div class="dropdown me-3">
+                        <a class="btn btn-light position-relative" href="#" role="button" id="notificationsDropdown" 
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-bell"></i>
+                            <?php
+                            // CÓDIGO SEGURO PARA NOTIFICACIONES - EVITA ERRORES
+                            $unreadCount = 0;
+                            try {
+                                if (isset($_SESSION['user_id'])) {
+                                    $db = getDB();
+                                    
+                                    // Verificar si la tabla existe
+                                    $tableExists = $db->query("SHOW TABLES LIKE 'notificaciones'")->rowCount() > 0;
+                                    
+                                    if ($tableExists) {
+                                        // Verificar columnas de la tabla
+                                        $columns = $db->query("SHOW COLUMNS FROM notificaciones")->fetchAll(PDO::FETCH_COLUMN);
+                                        
+                                        // Determinar nombre correcto de las columnas
+                                        $userColumn = in_array('id_usuario', $columns) ? 'id_usuario' : 
+                                                     (in_array('user_id', $columns) ? 'user_id' : 
+                                                     (in_array('usuario_id', $columns) ? 'usuario_id' : 'id'));
+                                                     
+                                        $readColumn = in_array('leido', $columns) ? 'leido' : 
+                                                     (in_array('read', $columns) ? 'read' : 'leido');
+                                        
+                                        // Consulta segura
+                                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM notificaciones WHERE $userColumn = ? AND $readColumn = 0");
+                                        $stmt->execute([$_SESSION['user_id']]);
+                                        $result = $stmt->fetch();
+                                        $unreadCount = $result ? $result['count'] : 0;
+                                    }
+                                }
+                            } catch (Exception $e) {
+                                // Silenciar el error para no romper la página
+                                $unreadCount = 0;
+                                error_log("Error en notificaciones: " . $e->getMessage());
+                            }
+                            
+                            if ($unreadCount > 0): ?>
+                                <span class="notification-badge"><?php echo $unreadCount; ?></span>
+                            <?php endif; ?>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationsDropdown" style="width: 350px;">
+                            <li><h6 class="dropdown-header">Notificaciones</h6></li>
+                            <?php
+                            $notifications = [];
+                            try {
+                                if (isset($_SESSION['user_id']) && isset($tableExists) && $tableExists && isset($userColumn)) {
+                                    // Obtener últimas notificaciones
+                                    $stmt = $db->prepare("
+                                        SELECT * FROM notificaciones 
+                                        WHERE $userColumn = ? 
+                                        ORDER BY fecha_creacion DESC 
+                                        LIMIT 5
+                                    ");
+                                    $stmt->execute([$_SESSION['user_id']]);
+                                    $notifications = $stmt->fetchAll();
+                                }
+                            } catch (Exception $e) {
+                                // Silenciar el error
+                                error_log("Error cargando notificaciones: " . $e->getMessage());
+                            }
+                            
+                            if (empty($notifications)): ?>
+                                <li><span class="dropdown-item-text text-muted">No hay notificaciones</span></li>
+                            <?php else: ?>
+                                <?php foreach ($notifications as $notification): ?>
+                                    <li>
+                                        <a class="dropdown-item notification-item <?php echo (!$notification['leido'] && isset($notification['leido'])) ? 'unread' : ''; ?>" 
+                                           href="<?php echo isset($notification['url']) ? $notification['url'] : '#'; ?>">
+                                            <div class="d-flex w-100 justify-content-between">
+                                                <h6 class="mb-1"><?php echo isset($notification['titulo']) ? htmlspecialchars($notification['titulo']) : 'Sin título'; ?></h6>
+                                                <small class="notification-time">
+                                                    <?php echo isset($notification['fecha_creacion']) ? time_elapsed_string($notification['fecha_creacion']) : ''; ?>
+                                                </small>
+                                            </div>
+                                            <p class="mb-1"><?php echo isset($notification['mensaje']) ? htmlspecialchars($notification['mensaje']) : ''; ?></p>
+                                        </a>
+                                    </li>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-center" href="<?php echo SITE_URL; ?>modules/notificaciones/">Ver todas las notificaciones</a></li>
+                        </ul>
+                    </div>
+                    
                     <span class="text-muted me-3">
                         <i class="fas fa-user-circle"></i> 
                         <?php echo $_SESSION['user_name']; ?>
@@ -378,10 +578,57 @@ if (!isset($pageTitle)) {
         
         <!-- Page Content -->
         <div class="content-wrapper">
-            <?php showAlert(); ?>
+            <?php 
+            // Sistema de alertas mejorado
+            if (isset($_SESSION['success'])): ?>
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        let message = "<?php echo addslashes($_SESSION['success']); ?>";
+                        showToast(message, 'success', 3000);
+                    });
+                </script>
+                <?php unset($_SESSION['success']); ?>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION['error'])): ?>
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        let message = "<?php echo addslashes($_SESSION['error']); ?>";
+                        showToast(message, 'error', 4000);
+                    });
+                </script>
+                <?php unset($_SESSION['error']); ?>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION['warning'])): ?>
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        let message = "<?php echo addslashes($_SESSION['warning']); ?>";
+                        showToast(message, 'warning', 3500);
+                    });
+                </script>
+                <?php unset($_SESSION['warning']); ?>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION['info'])): ?>
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        let message = "<?php echo addslashes($_SESSION['info']); ?>";
+                        showToast(message, 'info', 3000);
+                    });
+                </script>
+                <?php unset($_SESSION['info']); ?>
+            <?php endif; ?>
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
 <!-- Bootstrap 5 JS Bundle with Popper -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
 // Script mejorado para el comportamiento de los dropdowns
@@ -473,6 +720,155 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    console.log('Dropdowns inicializados correctamente');
+    // SweetAlert2 para confirmar cierre de sesión
+    document.getElementById('logoutBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        const logoutUrl = this.href;
+        
+        Swal.fire({
+            title: '¿Cerrar sesión?',
+            text: '¿Estás seguro de que deseas salir del sistema?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: '<i class="fas fa-sign-out-alt"></i> Sí, cerrar sesión',
+            cancelButtonText: '<i class="fas fa-times"></i> Cancelar',
+            reverseButtons: true,
+            customClass: {
+                popup: 'animated bounceIn'
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = logoutUrl;
+            }
+        });
+    });
+
+    // Sistema de notificaciones - Marcar como leídas
+    const notificationIcon = document.getElementById('notificationsDropdown');
+    
+    if (notificationIcon) {
+        notificationIcon.addEventListener('click', function() {
+            fetch("<?php echo SITE_URL; ?>modules/notificaciones/marcar_leidas.php", {
+                    method: "POST",
+                    headers: {
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const badge = notificationIcon.querySelector('.notification-badge');
+                        if (badge) badge.remove();
+                    }
+                })
+                .catch(error => console.error('Error al marcar notificaciones como leídas:', error));
+        });
+    }
+    
+    console.log('Sistema inicializado correctamente');
 });
+
+// =============================================
+// FUNCIONES GLOBALES SWEETALERT2
+// =============================================
+
+/**
+ * Muestra alerta toast en esquina superior derecha
+ * Ideal para notificaciones de éxito, información, etc.
+ */
+function showSweetAlert(title, message, icon = 'success', confirmButtonText = 'OK') {
+    return Swal.fire({
+        title: title,
+        text: message,
+        icon: icon,
+        position: 'top-end',
+        toast: true,
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        customClass: {
+            popup: 'animated bounceInRight'
+        },
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+    });
+}
+
+/**
+ * Función específica para notificaciones toast simples
+ */
+function showToast(title, icon = 'success', timer = 3000) {
+    return Swal.fire({
+        title: title,
+        icon: icon,
+        position: 'top-end',
+        toast: true,
+        showConfirmButton: false,
+        timer: timer,
+        timerProgressBar: true,
+        customClass: {
+            popup: 'animated bounceInRight'
+        },
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+    });
+}
+
+/**
+ * Muestra confirmación centrada (para acciones importantes)
+ */
+function confirmSweetAlert(title, text, confirmButtonText = 'Sí', cancelButtonText = 'Cancelar') {
+    return Swal.fire({
+        title: title,
+        text: text,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: confirmButtonText,
+        cancelButtonText: cancelButtonText,
+        reverseButtons: true,
+        customClass: {
+            popup: 'animated bounceIn'
+        }
+    });
+}
+
+/**
+ * Muestra errores de validación centrados
+ */
+function showValidationErrors(errors) {
+    let errorList = '';
+    errors.forEach(error => {
+        errorList += `<li>${error}</li>`;
+    });
+    
+    Swal.fire({
+        title: 'Errores en el formulario',
+        html: `
+            <div class="text-start">
+                <p>Por favor, corrige los siguientes errores:</p>
+                <ul>${errorList}</ul>
+            </div>
+        `,
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        customClass: {
+            popup: 'animated shake'
+        }
+    });
+}
 </script>
+
+<!-- JavaScript adicional -->
+<?php if (isset($js_extra)): ?>
+    <?php echo $js_extra; ?>
+<?php endif; ?>

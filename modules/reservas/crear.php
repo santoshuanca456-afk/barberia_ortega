@@ -45,7 +45,7 @@ include '../../includes/header.php';
                     </h6>
                 </div>
                 <div class="card-body">
-                    <form id="formReserva" action="procesar.php" method="POST" class="needs-validation" novalidate>
+                    <form id="formReserva" action="procesar.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                         <input type="hidden" name="action" value="crear">
 
@@ -56,7 +56,7 @@ include '../../includes/header.php';
                                     <i class="fas fa-user"></i> Cliente *
                                 </label>
                                 <div class="input-group">
-                                    <select name="id_cliente" id="id_cliente" class="form-select" required>
+                                    <select name="id_cliente" id="id_cliente" class="form-select">
                                         <option value="">Seleccione un cliente</option>
                                         <?php foreach ($clientes as $cliente): ?>
                                             <option value="<?php echo $cliente['id_cliente']; ?>">
@@ -71,7 +71,6 @@ include '../../includes/header.php';
                                         <i class="fas fa-plus"></i>
                                     </a>
                                 </div>
-                                <div class="invalid-feedback">Seleccione un cliente</div>
                             </div>
 
                             <!-- Barbero -->
@@ -79,7 +78,7 @@ include '../../includes/header.php';
                                 <label class="form-label">
                                     <i class="fas fa-user-tie"></i> Barbero *
                                 </label>
-                                <select name="id_usuario" id="id_usuario" class="form-select" required>
+                                <select name="id_usuario" id="id_usuario" class="form-select">
                                     <option value="">Seleccione un barbero</option>
                                     <?php foreach ($barberos as $barbero): ?>
                                         <option value="<?php echo $barbero['id_usuario']; ?>">
@@ -87,7 +86,6 @@ include '../../includes/header.php';
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="invalid-feedback">Seleccione un barbero</div>
                             </div>
 
                             <!-- Servicio -->
@@ -95,7 +93,7 @@ include '../../includes/header.php';
                                 <label class="form-label">
                                     <i class="fas fa-scissors"></i> Servicio *
                                 </label>
-                                <select name="id_servicio" id="id_servicio" class="form-select" required>
+                                <select name="id_servicio" id="id_servicio" class="form-select">
                                     <option value="">Seleccione un servicio</option>
                                     <?php foreach ($servicios as $servicio): ?>
                                         <option value="<?php echo $servicio['id_servicio']; ?>" 
@@ -106,7 +104,6 @@ include '../../includes/header.php';
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="invalid-feedback">Seleccione un servicio</div>
                             </div>
 
                             <!-- Fecha -->
@@ -116,9 +113,7 @@ include '../../includes/header.php';
                                 </label>
                                 <input type="date" name="fecha" id="fecha" class="form-control" 
                                        min="<?php echo date('Y-m-d'); ?>" 
-                                       value="<?php echo date('Y-m-d'); ?>" 
-                                       required>
-                                <div class="invalid-feedback">Ingrese una fecha</div>
+                                       value="<?php echo date('Y-m-d'); ?>">
                             </div>
 
                             <!-- Hora Inicio -->
@@ -127,15 +122,14 @@ include '../../includes/header.php';
                                     <i class="fas fa-clock"></i> Hora de Inicio *
                                 </label>
                                 <input type="time" name="hora_inicio" id="hora_inicio" class="form-control" 
-                                       min="08:00" max="20:00" required>
-                                <small class="text-muted">Horario: 08:00 - 20:00</small>
-                                <div class="invalid-feedback">Ingrese una hora válida</div>
+                                       min="08:00" max="20:00" step="900">
+                                <small class="text-muted">Horario: 08:00 - 20:00 (intervalos de 15 min)</small>
                             </div>
 
                             <!-- Hora Fin (calculada automáticamente) -->
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">
-                                    <i class="fas fa-clock"></i> Hora de Fin
+                                    <i class="fas fa-clock"></i> Hora de Fin *
                                 </label>
                                 <input type="time" name="hora_fin" id="hora_fin" class="form-control" readonly>
                                 <small class="text-muted">Se calcula automáticamente según el servicio</small>
@@ -184,7 +178,7 @@ include '../../includes/header.php';
                             <a href="index.php" class="btn btn-secondary me-2">
                                 <i class="fas fa-times"></i> Cancelar
                             </a>
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary" id="btnSubmit">
                                 <i class="fas fa-save"></i> Guardar Reserva
                             </button>
                         </div>
@@ -211,6 +205,9 @@ include '../../includes/header.php';
 
 <script>
 $(document).ready(function() {
+    // Inicializar tooltips
+    $('[data-bs-toggle="tooltip"]').tooltip();
+    
     // Calcular hora fin automáticamente
     $('#id_servicio, #hora_inicio').on('change', function() {
         calcularHoraFin();
@@ -223,25 +220,170 @@ $(document).ready(function() {
         cargarDisponibilidad();
     });
     
+    // Validar formulario antes de enviar
+    $('#formReserva').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (validarFormulario()) {
+            // Deshabilitar botón y mostrar estado de carga
+            $('#btnSubmit').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+            
+            // Mostrar notificación de procesamiento por esquina
+            Swal.fire({
+                title: 'Procesando reserva...',
+                icon: 'info',
+                position: 'top-end',
+                toast: true,
+                showConfirmButton: false,
+                timer: 2000,
+                timerProgressBar: true,
+                customClass: {
+                    popup: 'animated bounceInRight'
+                }
+            });
+            
+            // Enviar formulario después de un breve delay para que se vea el mensaje
+            setTimeout(() => {
+                document.getElementById('formReserva').submit();
+            }, 1000);
+        }
+    });
+    
     function calcularHoraFin() {
         const servicioSelect = document.getElementById('id_servicio');
         const horaInicio = document.getElementById('hora_inicio').value;
+        const horaFinInput = document.getElementById('hora_fin');
         
         if (servicioSelect.value && horaInicio) {
             const duracion = parseInt(servicioSelect.options[servicioSelect.selectedIndex].dataset.duracion);
             
-            if (duracion) {
+            if (duracion && duracion > 0) {
                 const [horas, minutos] = horaInicio.split(':');
                 const fecha = new Date();
                 fecha.setHours(parseInt(horas));
                 fecha.setMinutes(parseInt(minutos) + duracion);
                 
-                const horaFin = fecha.getHours().toString().padStart(2, '0') + ':' + 
-                               fecha.getMinutes().toString().padStart(2, '0');
+                const horaFinCalculada = fecha.getHours().toString().padStart(2, '0') + ':' + 
+                                       fecha.getMinutes().toString().padStart(2, '0');
                 
-                document.getElementById('hora_fin').value = horaFin;
+                // Validar que no exceda el horario de cierre (20:00)
+                if (fecha.getHours() < 20 || (fecha.getHours() === 20 && fecha.getMinutes() === 0)) {
+                    horaFinInput.value = horaFinCalculada;
+                } else {
+                    horaFinInput.value = '';
+                    // NOTIFICACIÓN POR ESQUINA - SweetAlert2 toast
+                    Swal.fire({
+                        title: 'Horario no disponible',
+                        text: 'El servicio no puede terminar después de las 20:00. Seleccione una hora más temprana.',
+                        icon: 'warning',
+                        position: 'top-end',
+                        toast: true,
+                        showConfirmButton: false,
+                        timer: 5000,
+                        timerProgressBar: true,
+                        customClass: {
+                            popup: 'animated bounceInRight'
+                        },
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+                }
+            } else {
+                horaFinInput.value = '';
+            }
+        } else {
+            horaFinInput.value = '';
+        }
+    }
+    
+    function validarFormulario() {
+        // SOLO CAMPOS OBLIGATORIOS - EXCLUYENDO ESTADO Y PAGADO
+        const campos = {
+            'id_cliente': 'Cliente',
+            'id_usuario': 'Barbero',
+            'id_servicio': 'Servicio',
+            'fecha': 'Fecha',
+            'hora_inicio': 'Hora de inicio',
+            'hora_fin': 'Hora de fin'
+            // NOTA: 'estado' y 'pagado' han sido removidos de la validación
+        };
+        
+        let errores = [];
+        
+        // Validar campos obligatorios (solo los especificados arriba)
+        for (const [campoId, campoNombre] of Object.entries(campos)) {
+            const valor = $(`#${campoId}`).val();
+            if (!valor || valor === '') {
+                errores.push(`${campoNombre}`);
+                
+                // Resaltar campo con error
+                $(`#${campoId}`).addClass('is-invalid');
+            } else {
+                $(`#${campoId}`).removeClass('is-invalid').addClass('is-valid');
             }
         }
+        
+        // Validaciones específicas
+        const fecha = $('#fecha').val();
+        const hoy = new Date().toISOString().split('T')[0];
+        if (fecha < hoy) {
+            errores.push('La fecha no puede ser anterior al día de hoy');
+            $('#fecha').addClass('is-invalid');
+        }
+        
+        const horaInicio = $('#hora_inicio').val();
+        if (horaInicio) {
+            const [horas, minutos] = horaInicio.split(':');
+            if (horas < 8 || horas >= 20) {
+                errores.push('La hora de inicio debe estar entre las 08:00 y 20:00');
+                $('#hora_inicio').addClass('is-invalid');
+            }
+        }
+        
+        // Validar que la hora fin esté calculada
+        const horaFin = $('#hora_fin').val();
+        if (!horaFin || horaFin === '00:00') {
+            errores.push('La hora de fin no se ha calculado correctamente');
+            $('#hora_fin').addClass('is-invalid');
+        }
+        
+        // Mostrar errores si los hay
+        if (errores.length > 0) {
+            // NOTIFICACIÓN POR ESQUINA - SweetAlert2 toast para errores
+            let errorMessage = 'Por favor, complete los siguientes campos: ' + errores.join(', ');
+            
+            Swal.fire({
+                title: 'Campos incompletos',
+                text: errorMessage,
+                icon: 'error',
+                position: 'top-end',
+                toast: true,
+                showConfirmButton: false,
+                timer: 6000,
+                timerProgressBar: true,
+                customClass: {
+                    popup: 'animated bounceInRight'
+                },
+                didOpen: (toast) => {
+                    toast.addEventListener('mouseenter', Swal.stopTimer)
+                    toast.addEventListener('mouseleave', Swal.resumeTimer)
+                }
+            });
+            
+            // Scroll al primer campo con error
+            const primerError = $('.is-invalid').first();
+            if (primerError.length) {
+                $('html, body').animate({
+                    scrollTop: primerError.offset().top - 100
+                }, 500);
+            }
+            
+            return false;
+        }
+        
+        return true;
     }
     
     function mostrarResumen() {
@@ -251,8 +393,10 @@ $(document).ready(function() {
         const fecha = $('#fecha').val();
         const horaInicio = $('#hora_inicio').val();
         const horaFin = $('#hora_fin').val();
+        const estado = $('select[name="estado"]').val();
+        const pagado = $('select[name="pagado"]').val();
         
-        if (cliente && barbero && servicio && fecha && horaInicio) {
+        if (cliente && barbero && servicio && fecha && horaInicio && horaFin) {
             const servicioSelect = document.getElementById('id_servicio');
             const precio = servicioSelect.options[servicioSelect.selectedIndex].dataset.precio;
             
@@ -261,18 +405,22 @@ $(document).ready(function() {
                     <div class="col-md-6">
                         <strong>Cliente:</strong> ${cliente}<br>
                         <strong>Barbero:</strong> ${barbero}<br>
-                        <strong>Servicio:</strong> ${servicio}
+                        <strong>Servicio:</strong> ${servicio}<br>
+                        <strong>Estado:</strong> ${estado}
                     </div>
                     <div class="col-md-6">
                         <strong>Fecha:</strong> ${formatearFecha(fecha)}<br>
                         <strong>Horario:</strong> ${horaInicio} - ${horaFin}<br>
-                        <strong>Precio:</strong> Bs ${parseFloat(precio).toFixed(2)}
+                        <strong>Precio:</strong> Bs ${parseFloat(precio).toFixed(2)}<br>
+                        <strong>Pago:</strong> ${pagado == 1 ? 'Pagado' : 'No Pagado'}
                     </div>
                 </div>
             `;
             
             $('#resumenContenido').html(html);
             $('#resumen').fadeIn();
+        } else {
+            $('#resumen').fadeOut();
         }
     }
     
@@ -282,7 +430,7 @@ $(document).ready(function() {
         
         if (fecha && barbero) {
             $('#cardDisponibilidad').show();
-            $('#disponibilidadContenido').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>');
+            $('#disponibilidadContenido').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Cargando disponibilidad...</div>');
             
             $.ajax({
                 url: 'disponibilidad.php',
@@ -292,9 +440,11 @@ $(document).ready(function() {
                     $('#disponibilidadContenido').html(response);
                 },
                 error: function() {
-                    $('#disponibilidadContenido').html('<p class="text-danger">Error al cargar disponibilidad</p>');
+                    $('#disponibilidadContenido').html('<p class="text-danger"><i class="fas fa-exclamation-triangle"></i> Error al cargar la disponibilidad</p>');
                 }
             });
+        } else {
+            $('#cardDisponibilidad').hide();
         }
     }
     
@@ -303,13 +453,19 @@ $(document).ready(function() {
         return `${day}/${month}/${year}`;
     }
     
-    // Validación del formulario
-    $('#formReserva').on('submit', function(e) {
-        if (!this.checkValidity()) {
-            e.preventDefault();
-            e.stopPropagation();
+    // Validación en tiempo real para mejor UX
+    $('select, input').on('change', function() {
+        const campoId = $(this).attr('id');
+        const valor = $(this).val();
+        
+        // Solo validar los campos obligatorios (excluyendo estado y pagado)
+        const camposObligatorios = ['id_cliente', 'id_usuario', 'id_servicio', 'fecha', 'hora_inicio', 'hora_fin'];
+        
+        if (camposObligatorios.includes(campoId) && valor) {
+            $(this).removeClass('is-invalid').addClass('is-valid');
+        } else if (camposObligatorios.includes(campoId) && !valor) {
+            $(this).removeClass('is-valid').addClass('is-invalid');
         }
-        $(this).addClass('was-validated');
     });
 });
 </script>

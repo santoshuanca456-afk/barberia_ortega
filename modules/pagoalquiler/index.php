@@ -1,6 +1,6 @@
 <?php
 /**
- * Listado de Pagos de Servicios
+ * Listado de Pagos de Alquiler
  * Sistema de Gestión - Barbería Ortega
  */
 
@@ -14,47 +14,31 @@ $filtroFechaInicio = isset($_GET['fecha_inicio']) ? $_GET['fecha_inicio'] : date
 $filtroFechaFin = isset($_GET['fecha_fin']) ? $_GET['fecha_fin'] : date('Y-m-d');
 $filtroMetodo = isset($_GET['metodo']) ? $_GET['metodo'] : '';
 
-// Obtener pagos de servicios
+// Obtener pagos de alquileres
 $query = "
-    SELECT p.*, 
-           r.id_reserva,
-           c.nombre as cliente_nombre,
-           s.nombre as servicio_nombre,
+    SELECT pa.*, 
+           a.id_alquiler,
+           e.nombre as estacion_nombre,
            u.nombre as usuario_nombre
-    FROM pagos p
-    LEFT JOIN reservas r ON p.id_reserva = r.id_reserva
-    LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
-    LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
-    LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
-    WHERE DATE(p.fecha_pago) BETWEEN ? AND ?
+    FROM pagos_alquiler pa
+    LEFT JOIN alquileres a ON pa.id_alquiler = a.id_alquiler
+    LEFT JOIN estaciones e ON a.id_estacion = e.id_estacion
+    LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+    WHERE DATE(pa.fecha_pago) BETWEEN ? AND ?
 ";
 
 $params = [$filtroFechaInicio, $filtroFechaFin];
 
 if ($filtroMetodo) {
-    $query .= " AND p.metodo = ?";
+    $query .= " AND pa.metodo = ?";
     $params[] = $filtroMetodo;
 }
 
-$query .= " ORDER BY p.fecha_pago DESC";
+$query .= " ORDER BY pa.fecha_pago DESC";
 
 $stmt = $db->prepare($query);
 $stmt->execute($params);
 $pagos = $stmt->fetchAll();
-
-// Obtener reservas pendientes de pago para el botón rápido
-$reservasPendientes = [];
-$stmtReservas = $db->query("
-    SELECT r.id_reserva, c.nombre as cliente_nombre, s.nombre as servicio_nombre, s.precio
-    FROM reservas r
-    LEFT JOIN clientes c ON r.id_cliente = c.id_cliente
-    LEFT JOIN servicios s ON r.id_servicio = s.id_servicio
-    WHERE r.pagado = FALSE 
-    AND r.estado IN ('confirmada', 'finalizada')
-    ORDER BY r.fecha_inicio DESC
-    LIMIT 10
-");
-$reservasPendientes = $stmtReservas->fetchAll();
 
 // Estadísticas del período
 $stmtStats = $db->prepare("
@@ -67,14 +51,14 @@ $stmtStats = $db->prepare("
         SUM(CASE WHEN metodo = 'tarjeta' THEN monto ELSE 0 END) as tarjeta_total,
         COUNT(CASE WHEN metodo = 'qr' THEN 1 END) as qr_count,
         SUM(CASE WHEN metodo = 'qr' THEN monto ELSE 0 END) as qr_total
-    FROM pagos 
+    FROM pagos_alquiler 
     WHERE DATE(fecha_pago) BETWEEN ? AND ?
 ");
 
 $stmtStats->execute([$filtroFechaInicio, $filtroFechaFin]);
 $stats = $stmtStats->fetch();
 
-$pageTitle = "Pagos de Servicios";
+$pageTitle = "Pagos de Alquileres";
 include '../../includes/header.php';
 ?>
 
@@ -83,41 +67,15 @@ include '../../includes/header.php';
     <div class="row mb-4">
         <div class="col-md-8">
             <h1 class="mb-2">
-                <i class="fas fa-cash-register text-primary"></i> 
-                Gestión de Pagos de Servicios
+                <i class="fas fa-receipt text-success"></i> 
+                Gestión de Pagos de Alquileres
             </h1>
-            <p class="text-muted">Administra los pagos de servicios de barbería</p>
+            <p class="text-muted">Administra los pagos de alquiler de estaciones</p>
         </div>
         <div class="col-md-4 text-end">
-            <div class="btn-group">
-                <a href="registrar_servicio.php" class="btn btn-primary btn-lg">
-                    <i class="fas fa-plus"></i> Registrar Pago
-                </a>
-                <?php if (count($reservasPendientes) > 0): ?>
-                <button type="button" class="btn btn-success btn-lg dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
-                    <span class="visually-hidden">Pagos Rápidos</span>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><h6 class="dropdown-header">Pagos Rápidos</h6></li>
-                    <?php foreach ($reservasPendientes as $reserva): ?>
-                    <li>
-                        <a class="dropdown-item" href="procesar.php?action=marcar_pagado_rapido&id=<?php echo $reserva['id_reserva']; ?>" 
-                           onclick="return confirm('¿Marcar como pagada la reserva #<?php echo $reserva['id_reserva']; ?>?')">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <small><strong>#<?php echo $reserva['id_reserva']; ?></strong> - <?php echo $reserva['cliente_nombre']; ?></small><br>
-                                    <small class="text-muted"><?php echo $reserva['servicio_nombre']; ?> - <?php echo formatMoney($reserva['precio']); ?></small>
-                                </div>
-                                <span class="badge bg-success">Efectivo</span>
-                            </div>
-                        </a>
-                    </li>
-                    <?php endforeach; ?>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-center" href="registrar_servicio.php">Ver todas las reservas...</a></li>
-                </ul>
-                <?php endif; ?>
-            </div>
+            <a href="registrar_alquiler.php" class="btn btn-success btn-lg">
+                <i class="fas fa-plus"></i> Registrar Pago
+            </a>
         </div>
     </div>
 
@@ -231,10 +189,10 @@ include '../../includes/header.php';
 
     <!-- Tabla de Pagos -->
     <div class="card shadow">
-        <div class="card-header bg-primary text-white">
+        <div class="card-header bg-success text-white">
             <h6 class="mb-0">
                 <i class="fas fa-list"></i> 
-                Lista de Pagos de Servicios
+                Lista de Pagos de Alquileres
                 <small class="float-end">Mostrando <?php echo count($pagos); ?> pago(s)</small>
             </h6>
         </div>
@@ -246,26 +204,25 @@ include '../../includes/header.php';
                             <tr>
                                 <th>ID</th>
                                 <th>Fecha</th>
-                                <th>Cliente</th>
-                                <th>Servicio</th>
+                                <th>Estación</th>
+                                <th>Arrendatario</th>
                                 <th>Monto</th>
                                 <th>Método</th>
-                                <th>Registrado por</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($pagos as $pago): ?>
                             <tr>
-                                <td><strong>#<?php echo $pago['id_pago']; ?></strong></td>
+                                <td><strong>#<?php echo $pago['id_pago_alquiler']; ?></strong></td>
                                 <td><?php echo formatDateTime($pago['fecha_pago']); ?></td>
                                 <td>
-                                    <i class="fas fa-user text-primary"></i>
-                                    <?php echo $pago['cliente_nombre'] ?? 'N/A'; ?>
+                                    <i class="fas fa-chair text-primary"></i>
+                                    <?php echo $pago['estacion_nombre'] ?? 'N/A'; ?>
                                 </td>
                                 <td>
-                                    <i class="fas fa-scissors text-info"></i>
-                                    <?php echo $pago['servicio_nombre'] ?? 'N/A'; ?>
+                                    <i class="fas fa-user text-info"></i>
+                                    <?php echo $pago['usuario_nombre'] ?? 'N/A'; ?>
                                 </td>
                                 <td><strong class="text-success"><?php echo formatMoney($pago['monto']); ?></strong></td>
                                 <td>
@@ -284,11 +241,6 @@ include '../../includes/header.php';
                                     </span>
                                 </td>
                                 <td>
-                                    <small class="text-muted">
-                                        <?php echo $pago['usuario_nombre'] ?? 'Sistema'; ?>
-                                    </small>
-                                </td>
-                                <td>
                                     <div class="btn-group btn-group-sm">
                                         <button type="button" 
                                                 class="btn btn-info" 
@@ -297,7 +249,7 @@ include '../../includes/header.php';
                                             <i class="fas fa-eye"></i>
                                         </button>
                                         <?php if (hasRole(ROLE_ADMIN)): ?>
-                                            <a href="procesar.php?action=eliminar_pago_servicio&id=<?php echo $pago['id_pago']; ?>" 
+                                            <a href="procesar.php?action=eliminar_pago_alquiler&id=<?php echo $pago['id_pago_alquiler']; ?>" 
                                                class="btn btn-danger"
                                                onclick="return confirm('¿Está seguro de eliminar este pago?')"
                                                data-bs-toggle="tooltip" title="Eliminar pago">
@@ -317,7 +269,7 @@ include '../../includes/header.php';
                                 <th>
                                     <strong><?php echo formatMoney($stats['total_ingresos']); ?></strong>
                                 </th>
-                                <th colspan="3"></th>
+                                <th colspan="2"></th>
                             </tr>
                         </tfoot>
                     </table>
@@ -325,9 +277,9 @@ include '../../includes/header.php';
             <?php else: ?>
                 <div class="text-center py-5 text-muted">
                     <i class="fas fa-inbox fa-3x mb-3"></i>
-                    <p>No hay pagos de servicios registrados en este período</p>
-                    <a href="registrar_servicio.php" class="btn btn-primary mt-3">
-                        <i class="fas fa-plus"></i> Registrar Primer Pago de Servicio
+                    <p>No hay pagos de alquiler registrados en este período</p>
+                    <a href="registrar_alquiler.php" class="btn btn-success mt-3">
+                        <i class="fas fa-plus"></i> Registrar Primer Pago de Alquiler
                     </a>
                 </div>
             <?php endif; ?>
@@ -370,7 +322,7 @@ include '../../includes/header.php';
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
                 <h5 class="modal-title">
-                    <i class="fas fa-receipt"></i> Detalle del Pago de Servicio
+                    <i class="fas fa-receipt"></i> Detalle del Pago de Alquiler
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -446,14 +398,13 @@ new Chart(ctxIngresos, {
 function verDetallePago(pago) {
     let html = '<dl class="row">';
     
-    html += `<dt class="col-sm-4">ID Pago:</dt><dd class="col-sm-8">#${pago.id_pago}</dd>`;
+    html += `<dt class="col-sm-4">ID Pago:</dt><dd class="col-sm-8">#${pago.id_pago_alquiler}</dd>`;
     html += `<dt class="col-sm-4">Fecha:</dt><dd class="col-sm-8">${formatearFechaHora(pago.fecha_pago)}</dd>`;
     html += `<dt class="col-sm-4">Monto:</dt><dd class="col-sm-8"><strong class="text-success">Bs ${parseFloat(pago.monto).toFixed(2)}</strong></dd>`;
     html += `<dt class="col-sm-4">Método:</dt><dd class="col-sm-8"><span class="badge bg-secondary">${pago.metodo.toUpperCase()}</span></dd>`;
-    html += `<dt class="col-sm-4">Cliente:</dt><dd class="col-sm-8">${pago.cliente_nombre || 'N/A'}</dd>`;
-    html += `<dt class="col-sm-4">Servicio:</dt><dd class="col-sm-8">${pago.servicio_nombre || 'N/A'}</dd>`;
-    html += `<dt class="col-sm-4">ID Reserva:</dt><dd class="col-sm-8">#${pago.id_reserva || 'N/A'}</dd>`;
-    html += `<dt class="col-sm-4">Registrado por:</dt><dd class="col-sm-8">${pago.usuario_nombre || 'Sistema'}</dd>`;
+    html += `<dt class="col-sm-4">Estación:</dt><dd class="col-sm-8">${pago.estacion_nombre || 'N/A'}</dd>`;
+    html += `<dt class="col-sm-4">Arrendatario:</dt><dd class="col-sm-8">${pago.usuario_nombre || 'N/A'}</dd>`;
+    html += `<dt class="col-sm-4">ID Alquiler:</dt><dd class="col-sm-8">#${pago.id_alquiler || 'N/A'}</dd>`;
     
     html += '</dl>';
     
